@@ -1,0 +1,17 @@
+# Python virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# System files
+.DS_Store
+Thumbs.db
+
+# User data databases (optional, but keep progress locally)
+user_progress.json
