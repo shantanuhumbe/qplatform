@@ -13,5 +13,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# User data databases (optional, but keep progress locally)
-user_progress.json
+# PDF and JSON databases
+*.pdf
+*.json
