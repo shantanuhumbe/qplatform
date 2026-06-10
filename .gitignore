@@ -15,4 +15,6 @@ Thumbs.db
 
 # PDF and JSON databases
 *.pdf
-*.json
+user_progress.json
+*.backup.json
+*.pre_gemini_fix.json
