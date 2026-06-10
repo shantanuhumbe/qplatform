@@ -1,11 +1,13 @@
 import os
 import sys
 
-# Ensure parent directory is in python search path for streamlit absolute imports
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+# Ensure parent directory is in python search path — MUST be first
+# Streamlit runs app.py as __main__ so we set the path before any quizapp imports
+_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
 
+from quizapp.utils.table_renderer import render_case_study
 import streamlit as st
 from quizapp.config import DEFAULT_OUTPUT_PATH, DEFAULT_PROGRESS_PATH, DEFAULT_GRADE_MODEL
 from quizapp.utils.data_manager import load_questions_bank, load_progress, save_progress
@@ -132,10 +134,14 @@ def main():
             unsafe_allow_html=True
         )
         
+        # Convert case study text to HTML with smart table rendering
+        raw_case_text = active_vignette.get("case_study_text", "")
+        case_study_html = render_case_study(raw_case_text)
+        
         # Render case study text in a customized scrollable container
         st.markdown(
             f'<div class="left-panel glass-card" style="height: 75vh; overflow-y: auto; padding: 20px;">'
-            f'{active_vignette.get("case_study_text", "")}'
+            f'{case_study_html}'
             f'</div>', 
             unsafe_allow_html=True
         )

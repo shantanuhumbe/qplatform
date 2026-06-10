@@ -88,26 +88,60 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Math equations and markdown tables rendering */
-table {
+.left-panel table,
+.glass-card table,
+table, .stMarkdown table, .stTable table {
     width: 100%;
     border-collapse: collapse;
     margin: 16px 0;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    table-layout: auto;
+    overflow-wrap: break-word;
 }
 
-th, td {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 10px 12px;
+/* Wrapper for horizontal scroll on wide tables */
+.left-panel {
+    overflow-x: auto;
+}
+
+.left-panel table,
+.glass-card table,
+.stMarkdown th, .stMarkdown td, th, td {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 8px 12px;
     text-align: left;
+    white-space: nowrap;
 }
 
+/* Allow cell content to wrap when needed */
+.left-panel td,
+.glass-card td {
+    white-space: normal;
+    word-break: break-word;
+    min-width: 60px;
+}
+
+.left-panel th,
+.glass-card th,
 th {
-    background-color: rgba(255, 255, 255, 0.05);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05));
     font-weight: 600;
+    color: #93C5FD;
+    white-space: normal;
+    word-break: break-word;
 }
 
+.left-panel tr:nth-child(even),
+.glass-card tr:nth-child(even),
 tr:nth-child(even) {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.left-panel tr:hover,
+.glass-card tr:hover,
+tr:hover {
+    background-color: rgba(59, 130, 246, 0.08);
+    transition: background-color 0.2s ease;
 }
 
 /* Dot Navigation Indicators */
@@ -186,7 +220,6 @@ div.stButton > button:active {
     border-left: 4px solid #EF4444;
     background-color: rgba(239, 68, 68, 0.05);
 }
-
 </style>
 """
 
