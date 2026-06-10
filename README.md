@@ -6,6 +6,17 @@ This repository features a pre-extracted quiz bank containing **233 vignettes** 
 
 ---
 
+## 🖥️ Application Preview
+
+<p align="center">
+  <img src="assets/quiz_app_screenshot.png" alt="CFA Quiz App Screenshot" width="90%" style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);" />
+</p>
+
+> [!NOTE]
+> All proprietary CFA vignette text and question choices in the preview above have been blurred out to protect copyrighted curriculum content. The application sidebar, diagnostic charts, and active progress indicators remain visible.
+
+---
+
 ## 🚀 Key Features
 
 *   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or summarized text).
@@ -27,6 +38,8 @@ qplatform/
 ├── requirements.txt        # Package dependencies list
 ├── questions_bank.json     # Pre-populated parsed vignette database
 ├── user_progress.json      # Saved statistics and completed answers
+├── assets/
+│   └── quiz_app_screenshot.png # Blurred application preview screenshot
 ├── scripts/
 │   └── parse_pdf_offline.py# High-performance PDF parser utility
 └── quizapp/
