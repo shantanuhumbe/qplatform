@@ -32,7 +32,7 @@ def render_sidebar(progress, vignettes):
             
         api_key = st.text_input("Gemini API Key", type="password", 
                                value=curr_key,
-                               help="Required for dynamic AI grading and parsing new PDFs.")
+                               help="Optional. Used for dynamic AI grading and parsing new PDFs. Offline fallback grading is used if not provided.")
         
         if api_key:
             api_key_clean = api_key.strip()
@@ -53,7 +53,7 @@ def render_sidebar(progress, vignettes):
             if is_env_valid:
                 st.session_state.api_key = env_key
             else:
-                st.info("API Key required. Enter key or set GEMINI_API_KEY environment variable.")
+                st.info("Optional: Set API Key for diagnostic AI grading. Otherwise, standard offline grading will be used.")
             
         # Model Selection
         model_options = {

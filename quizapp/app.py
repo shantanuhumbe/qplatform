@@ -14,6 +14,7 @@ from quizapp.utils.data_manager import load_questions_bank, load_progress, save_
 from quizapp.ui.styles import apply_custom_styles
 from quizapp.ui.components import render_sidebar, render_navigation_dots
 from quizapp.grader import grade_user_answer
+from quizapp.calculator import render_calculator_drawer
 
 # Force wide mode layout for visual split screen columns
 st.set_page_config(layout="wide", page_title="CFA Case Study Quiz App", page_icon="🎯")
@@ -120,6 +121,9 @@ def main():
         else:
             attempted_status[idx] = {"answered": False}
             
+    # Calculator drawer (collapsible above quiz)
+    render_calculator_drawer()
+    
     # 3. UI Layout Splitting
     col1, col2 = st.columns(2)
     
@@ -283,9 +287,15 @@ def main():
                     option_letter = option_letter[0]
                     
                 if st.button("Submit Answer", type="primary"):
-                    # Submits answer to LLM grader
                     if not st.session_state.api_key:
-                        st.error("⚠️ API Key is missing. Please set your Gemini API Key in the sidebar to grade your answer.")
+                        is_match = option_letter.strip().upper() == q.get("correct_answer", "").strip().upper()
+                        grading_feedback = {
+                            "is_correct": is_match,
+                            "conceptual_score": 10 if is_match else 0,
+                            "feedback_text": f"Offline local grading: Your answer is {'correct' if is_match else 'incorrect'} (set Gemini API Key in the sidebar to get full AI feedback and diagnostic analysis).",
+                            "error_category": "None" if is_match else "Unclassified",
+                            "calculation_error_identified": False
+                        }
                     else:
                         with st.spinner("Grading answer with Gemini API..."):
                             grading_feedback = grade_user_answer(
@@ -299,28 +309,28 @@ def main():
                                 user_explanation=reasoning
                             )
                             
-                            # Save result
-                            is_correct = grading_feedback.get("is_correct", False)
-                            progress["attempted_questions"][q_key] = {
-                                "user_answer": option_letter,
-                                "user_explanation": reasoning,
-                                "is_correct": is_correct,
-                                "feedback": grading_feedback
-                            }
-                            
-                            # Update scores
-                            progress["total_attempted"] += 1
-                            if is_correct:
-                                progress["score"] += 1
-                                
-                            # Update error category statistics
-                            err_cat = grading_feedback.get("error_category", "None")
-                            if err_cat not in progress["statistics"]:
-                                progress["statistics"][err_cat] = 0
-                            progress["statistics"][err_cat] += 1
-                            
-                            save_progress(DEFAULT_PROGRESS_PATH, progress)
-                            st.rerun()
+                    # Save result
+                    is_correct = grading_feedback.get("is_correct", False)
+                    progress["attempted_questions"][q_key] = {
+                        "user_answer": option_letter,
+                        "user_explanation": reasoning,
+                        "is_correct": is_correct,
+                        "feedback": grading_feedback
+                    }
+                    
+                    # Update scores
+                    progress["total_attempted"] += 1
+                    if is_correct:
+                        progress["score"] += 1
+                        
+                    # Update error category statistics
+                    err_cat = grading_feedback.get("error_category", "None")
+                    if err_cat not in progress["statistics"]:
+                        progress["statistics"][err_cat] = 0
+                    progress["statistics"][err_cat] += 1
+                    
+                    save_progress(DEFAULT_PROGRESS_PATH, progress)
+                    st.rerun()
                             
             # 4. Question Navigation controls
             st.markdown("---")
