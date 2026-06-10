@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import json
 
 def render_sidebar(progress, vignettes):
     """Renders the quiz study dashboard sidebar, statistics, and configuration inputs."""
@@ -54,6 +55,27 @@ def render_sidebar(progress, vignettes):
             else:
                 st.info("API Key required. Enter key or set GEMINI_API_KEY environment variable.")
             
+        # Model Selection
+        model_options = {
+            "gemini-2.5-flash": "Gemini 2.5 Flash (Default - Fast & Smart)",
+            "gemini-2.5-flash-lite": "Gemini 2.5 Flash-Lite (Rate-Limit Friendly)",
+            "gemini-2.0-flash": "Gemini 2.0 Flash (Fast & Balanced)",
+            "gemini-2.5-pro": "Gemini 2.5 Pro (Detailed - Slow)"
+        }
+        
+        curr_model = st.session_state.get("grade_model", "gemini-2.5-flash")
+        if curr_model not in model_options:
+            curr_model = "gemini-2.5-flash"
+            
+        selected_model_key = st.selectbox(
+            "AI Grading Model",
+            options=list(model_options.keys()),
+            format_func=lambda x: model_options[x],
+            index=list(model_options.keys()).index(curr_model),
+            help="Select the Gemini model for evaluation. If you hit 'Too Many Requests (429)' errors, try switching to Gemini 1.5 Flash."
+        )
+        st.session_state.grade_model = selected_model_key
+        
         st.markdown("---")
         
         # 2. Filtering Options
@@ -109,7 +131,47 @@ def render_sidebar(progress, vignettes):
         else:
             st.info("No error categories tracked yet. Attempt questions to diagnose weak areas.")
             
-        # 5. Reset progress button
+        # 5. Backup & Restore
+        st.markdown("---")
+        st.subheader("💾 Backup & Restore")
+        
+        try:
+            progress_json_str = json.dumps(progress, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="📥 Download Progress JSON",
+                data=progress_json_str,
+                file_name="cfa_study_progress.json",
+                mime="application/json",
+                use_container_width=True,
+                help="Download your session scores and stats to save locally."
+            )
+        except Exception as e:
+            st.error(f"Error preparing download: {e}")
+            
+        uploaded_file = st.file_uploader(
+            "Restore Progress",
+            type=["json"],
+            help="Upload a previously saved cfa_study_progress.json to restore your progress."
+        )
+        if uploaded_file is not None:
+            try:
+                uploaded_data = json.load(uploaded_file)
+                required_keys = ["attempted_questions", "completed_vignettes", "score", "total_attempted", "statistics"]
+                if all(k in uploaded_data for k in required_keys):
+                    if uploaded_data != progress:
+                        from quizapp.utils.data_manager import save_progress
+                        from quizapp.config import DEFAULT_PROGRESS_PATH
+                        save_progress(DEFAULT_PROGRESS_PATH, uploaded_data)
+                        st.success("✅ Progress uploaded and restored!")
+                        st.rerun()
+                else:
+                    st.error("❌ Invalid format: missing required progress keys.")
+            except Exception as e:
+                st.error(f"❌ Error parsing progress file: {e}")
+
+        st.markdown("---")
+        
+        # 6. Reset progress button
         if st.button("Reset Session Progress"):
             st.session_state.reset_progress = True
             st.rerun()

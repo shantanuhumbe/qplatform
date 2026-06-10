@@ -148,84 +148,172 @@ def main():
         
     # Right column: Active Question, Answers, Navigation and grading
     with col2:
-        st.markdown("<h3 style='margin-bottom: 0px; font-family: \"Outfit\", sans-serif;'>📋 Question Panel</h3>", unsafe_allow_html=True)
-        render_navigation_dots(questions, attempted_status, active_q_idx)
+        # Determine if all questions in this vignette are answered
+        all_answered = all(attempted_status[idx]["answered"] for idx in range(len(questions)))
         
-        if not questions:
-            st.warning("No questions found for this vignette.")
-            return
+        # Conditionally split layout into tabs if vignette is complete
+        if all_answered:
+            tab_review, tab_summary = st.tabs(["📋 Question Review", "📊 Vignette Performance Summary"])
+            q_container = tab_review
+        else:
+            q_container = st.container()
             
-        q = questions[active_q_idx]
-        q_key = f"{active_vignette['topic']}::q_{active_q_idx}"
-        
-        st.markdown(
-            f'<div class="glass-card" style="padding: 20px; border-radius: 12px; margin-top: 10px;">'
-            f'<strong>Question {active_q_idx + 1}:</strong><br/>{q.get("question_text", "")}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-        
-        is_answered = attempted_status[active_q_idx]["answered"]
-        options = q.get("options", [])
-        
-        if is_answered:
-            # Question is already answered: display locked values and AI Grader feedback
-            answer_data = attempted_status[active_q_idx]["data"]
-            user_ans = answer_data.get("user_answer", "")
-            user_expl = answer_data.get("user_explanation", "")
-            feedback = answer_data.get("feedback", {})
+        with q_container:
+            st.markdown("<h3 style='margin-bottom: 0px; font-family: \"Outfit\", sans-serif;'>📋 Question Panel</h3>", unsafe_allow_html=True)
+            render_navigation_dots(questions, attempted_status, active_q_idx)
             
-            # Show selected answer
-            st.markdown(f"**Your selected option:** `{user_ans}`")
-            if user_expl:
-                st.markdown(f"**Your reasoning:**\n> *{user_expl}*")
-            
-            # Format feedback callout box style based on correctness
-            feedback_class = "feedback-correct" if answer_data.get("is_correct") else "feedback-incorrect"
-            status_text = "✅ CORRECT" if answer_data.get("is_correct") else "❌ INCORRECT"
+            if not questions:
+                st.warning("No questions found for this vignette.")
+                return
+                
+            q = questions[active_q_idx]
+            q_key = f"{active_vignette['topic']}::q_{active_q_idx}"
             
             st.markdown(
-                f'<div class="feedback-box {feedback_class}">'
-                f'<h4>{status_text} (Score: {feedback.get("conceptual_score", 10)}/10)</h4>'
-                f'<p><strong>Error Classification:</strong> {feedback.get("error_category", "None")}</p>'
-                f'<p style="margin-top: 10px;">{feedback.get("feedback_text", "")}</p>'
+                f'<div class="glass-card" style="padding: 20px; border-radius: 12px; margin-top: 10px;">'
+                f'<strong>Question {active_q_idx + 1}:</strong><br/>{q.get("question_text", "")}'
                 f'</div>',
                 unsafe_allow_html=True
             )
             
-            # If the attempt used offline fallback, allow retrying the grading
-            if feedback.get("feedback_text", "").startswith("Fallback grading:"):
-                st.info("ℹ️ Offline fallback grading was used for this attempt due to a transient API issue.")
-                if st.button("🔄 Retry AI Grading", key=f"retry_{q_key}"):
+            is_answered = attempted_status[active_q_idx]["answered"]
+            options = q.get("options", [])
+            
+            if is_answered:
+                # Question is already answered: display locked values and AI Grader feedback
+                answer_data = attempted_status[active_q_idx]["data"]
+                user_ans = answer_data.get("user_answer", "")
+                user_expl = answer_data.get("user_explanation", "")
+                feedback = answer_data.get("feedback", {})
+                
+                # Show selected answer
+                st.markdown(f"**Your selected option:** `{user_ans}`")
+                if user_expl:
+                    st.markdown(f"**Your reasoning:**\n> *{user_expl}*")
+                
+                # Format feedback callout box style based on correctness
+                feedback_class = "feedback-correct" if answer_data.get("is_correct") else "feedback-incorrect"
+                status_text = "✅ CORRECT" if answer_data.get("is_correct") else "❌ INCORRECT"
+                
+                # Normalize and cap the score dynamically (LLM might return value out of 100 instead of 10)
+                raw_score = feedback.get("conceptual_score", 10)
+                try:
+                    raw_score = int(raw_score)
+                    if raw_score > 10:
+                        raw_score = int(round(raw_score / 10.0))
+                    score_display = max(0, min(10, raw_score))
+                except:
+                    score_display = 10 if answer_data.get("is_correct") else 1
+                
+                st.markdown(
+                    f'<div class="feedback-box {feedback_class}">'
+                    f'<h4>{status_text} (Score: {score_display}/10)</h4>'
+                    f'<p><strong>Error Classification:</strong> {feedback.get("error_category", "None")}</p>'
+                    f'<p style="margin-top: 10px;">{feedback.get("feedback_text", "")}</p>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                
+                # If the attempt used offline fallback, allow retrying the grading
+                if feedback.get("feedback_text", "").startswith("Fallback grading:"):
+                    st.info("ℹ️ Offline fallback grading was used for this attempt due to a transient API issue.")
+                    if st.button("🔄 Retry AI Grading", key=f"retry_{q_key}"):
+                        if not st.session_state.api_key:
+                            st.error("⚠️ API Key is missing. Please set your Gemini API Key in the sidebar.")
+                        else:
+                            with st.spinner("Retrying grading with Gemini API..."):
+                                grading_feedback = grade_user_answer(
+                                    api_key=st.session_state.api_key,
+                                    model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
+                                    question_text=q.get("question_text", ""),
+                                    options=options,
+                                    selected_option=user_ans,
+                                    correct_option=q.get("correct_answer", ""),
+                                    official_explanation=q.get("official_explanation", ""),
+                                    user_explanation=user_expl
+                                )
+                                
+                                # Save updated feedback
+                                is_correct = grading_feedback.get("is_correct", False)
+                                progress["attempted_questions"][q_key] = {
+                                    "user_answer": user_ans,
+                                    "user_explanation": user_expl,
+                                    "is_correct": is_correct,
+                                    "feedback": grading_feedback
+                                }
+                                
+                                # Update statistics
+                                old_err = feedback.get("error_category", "None")
+                                if old_err in progress["statistics"] and progress["statistics"][old_err] > 0:
+                                    progress["statistics"][old_err] -= 1
+                                    
+                                err_cat = grading_feedback.get("error_category", "None")
+                                if err_cat not in progress["statistics"]:
+                                    progress["statistics"][err_cat] = 0
+                                progress["statistics"][err_cat] += 1
+                                
+                                save_progress(DEFAULT_PROGRESS_PATH, progress)
+                                st.rerun()
+                
+                # Display official rationale
+                st.markdown("---")
+                with st.expander("📖 View Official Rationale / Explanation"):
+                    st.markdown(f"**Correct Option Letter:** `{q.get('correct_answer', '')}`")
+                    st.markdown(q.get("official_explanation", ""))
+                    
+            else:
+                # Question is unanswered: Render options radio and submit controls
+                selected = st.radio(
+                    "Choose your option:",
+                    options,
+                    index=0,
+                    key=f"radio_{q_key}"
+                )
+                
+                # Reasoning textbox
+                reasoning = st.text_area(
+                    "Explain your logical reasoning or work (optional, helps AI diagnosis):",
+                    placeholder="Write down your formulas or assumptions...",
+                    key=f"text_{q_key}"
+                )
+                
+                # Extract Option Letter (e.g. "A" from "A. Valuation...")
+                option_letter = selected.split(")")[0].split(".")[0].strip() if selected else ""
+                if len(option_letter) > 1:
+                    option_letter = option_letter[0]
+                    
+                if st.button("Submit Answer", type="primary"):
+                    # Submits answer to LLM grader
                     if not st.session_state.api_key:
-                        st.error("⚠️ API Key is missing. Please set your Gemini API Key in the sidebar.")
+                        st.error("⚠️ API Key is missing. Please set your Gemini API Key in the sidebar to grade your answer.")
                     else:
-                        with st.spinner("Retrying grading with Gemini API..."):
+                        with st.spinner("Grading answer with Gemini API..."):
                             grading_feedback = grade_user_answer(
                                 api_key=st.session_state.api_key,
-                                model=DEFAULT_GRADE_MODEL,
+                                model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
                                 question_text=q.get("question_text", ""),
                                 options=options,
-                                selected_option=user_ans,
+                                selected_option=option_letter,
                                 correct_option=q.get("correct_answer", ""),
                                 official_explanation=q.get("official_explanation", ""),
-                                user_explanation=user_expl
+                                user_explanation=reasoning
                             )
                             
-                            # Save updated feedback
+                            # Save result
                             is_correct = grading_feedback.get("is_correct", False)
                             progress["attempted_questions"][q_key] = {
-                                "user_answer": user_ans,
-                                "user_explanation": user_expl,
+                                "user_answer": option_letter,
+                                "user_explanation": reasoning,
                                 "is_correct": is_correct,
                                 "feedback": grading_feedback
                             }
                             
-                            # Update statistics
-                            old_err = feedback.get("error_category", "None")
-                            if old_err in progress["statistics"] and progress["statistics"][old_err] > 0:
-                                progress["statistics"][old_err] -= 1
+                            # Update scores
+                            progress["total_attempted"] += 1
+                            if is_correct:
+                                progress["score"] += 1
                                 
+                            # Update error category statistics
                             err_cat = grading_feedback.get("error_category", "None")
                             if err_cat not in progress["statistics"]:
                                 progress["statistics"][err_cat] = 0
@@ -233,89 +321,130 @@ def main():
                             
                             save_progress(DEFAULT_PROGRESS_PATH, progress)
                             st.rerun()
-            
-            # Display official rationale
-            st.markdown("---")
-            with st.expander("📖 View Official Rationale / Explanation"):
-                st.markdown(f"**Correct Option Letter:** `{q.get('correct_answer', '')}`")
-                st.markdown(q.get("official_explanation", ""))
-                
-        else:
-            # Question is unanswered: Render options radio and submit controls
-            selected = st.radio(
-                "Choose your option:",
-                options,
-                index=0,
-                key=f"radio_{q_key}"
-            )
-            
-            # Reasoning textbox
-            reasoning = st.text_area(
-                "Explain your logical reasoning or work (optional, helps AI diagnosis):",
-                placeholder="Write down your formulas or assumptions...",
-                key=f"text_{q_key}"
-            )
-            
-            # Extract Option Letter (e.g. "A" from "A. Valuation...")
-            option_letter = selected.split(")")[0].split(".")[0].strip() if selected else ""
-            if len(option_letter) > 1:
-                option_letter = option_letter[0]
-                
-            if st.button("Submit Answer", type="primary"):
-                # Submits answer to LLM grader
-                if not st.session_state.api_key:
-                    st.error("⚠️ API Key is missing. Please set your Gemini API Key in the sidebar to grade your answer.")
-                else:
-                    with st.spinner("Grading answer with Gemini API..."):
-                        grading_feedback = grade_user_answer(
-                            api_key=st.session_state.api_key,
-                            model=DEFAULT_GRADE_MODEL,
-                            question_text=q.get("question_text", ""),
-                            options=options,
-                            selected_option=option_letter,
-                            correct_option=q.get("correct_answer", ""),
-                            official_explanation=q.get("official_explanation", ""),
-                            user_explanation=reasoning
-                        )
-                        
-                        # Save result
-                        is_correct = grading_feedback.get("is_correct", False)
-                        progress["attempted_questions"][q_key] = {
-                            "user_answer": option_letter,
-                            "user_explanation": reasoning,
-                            "is_correct": is_correct,
-                            "feedback": grading_feedback
-                        }
-                        
-                        # Update scores
-                        progress["total_attempted"] += 1
-                        if is_correct:
-                            progress["score"] += 1
                             
-                        # Update error category statistics
-                        err_cat = grading_feedback.get("error_category", "None")
-                        if err_cat not in progress["statistics"]:
-                            progress["statistics"][err_cat] = 0
-                        progress["statistics"][err_cat] += 1
-                        
-                        save_progress(DEFAULT_PROGRESS_PATH, progress)
-                        st.rerun()
-                        
-        # 4. Question Navigation controls
-        st.markdown("---")
-        nav_col1, nav_col2 = st.columns(2)
-        with nav_col1:
-            if st.button("⬅️ Previous Question", disabled=(active_q_idx == 0)):
-                st.session_state.question_index -= 1
-                st.rerun()
-        with nav_col2:
-            if st.button("Next Question ➡️", disabled=(active_q_idx == len(questions) - 1)):
-                st.session_state.question_index += 1
-                st.rerun()
-                
-        # 5. Handle complete vignette navigation
-        all_answered = all(attempted_status[idx]["answered"] for idx in range(len(questions)))
+            # 4. Question Navigation controls
+            st.markdown("---")
+            nav_col1, nav_col2 = st.columns(2)
+            with nav_col1:
+                if st.button("⬅️ Previous Question", disabled=(active_q_idx == 0)):
+                    st.session_state.question_index -= 1
+                    st.rerun()
+            with nav_col2:
+                if st.button("Next Question ➡️", disabled=(active_q_idx == len(questions) - 1)):
+                    st.session_state.question_index += 1
+                    st.rerun()
+                    
+        # 5. Handle complete vignette summary and navigation
         if all_answered:
+            with tab_summary:
+                st.markdown("<h3 style='margin-bottom: 10px; font-family: \"Outfit\", sans-serif;'>📊 Vignette Study Summary</h3>", unsafe_allow_html=True)
+                
+                # Calculate score for this vignette
+                local_score = 0
+                local_attempted = len(questions)
+                local_errors = []
+                
+                for idx in range(len(questions)):
+                    key = f"{active_vignette['topic']}::q_{idx}"
+                    if key in progress["attempted_questions"]:
+                        q_data = progress["attempted_questions"][key]
+                        feedback = q_data.get("feedback", {})
+                        if q_data.get("is_correct", False):
+                            local_score += 1
+                        else:
+                            local_errors.append({
+                                "q_idx": idx,
+                                "category": feedback.get("error_category", "Unclassified"),
+                                "feedback": feedback.get("feedback_text", "No feedback details.")
+                            })
+                
+                local_pct = (local_score / local_attempted * 100) if local_attempted > 0 else 0.0
+                
+                # Display Score card
+                st.markdown(
+                    f'<div class="glass-card" style="padding: 20px; border-radius: 12px; margin-top: 10px; border-left: 5px solid #3B82F6;">'
+                    f'<h4 style="margin: 0; font-family: \'Outfit\', sans-serif;">Case Study Score: '
+                    f'<span style="color: #93C5FD;">{local_score}/{local_attempted} ({local_pct:.1f}%)</span></h4>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                
+                # Weakness analysis
+                if local_errors:
+                    st.markdown("#### 🔍 Weaknesses Identified in this Case Study")
+                    for err in local_errors:
+                        st.markdown(
+                            f'<div class="feedback-box feedback-incorrect" style="margin-top: 10px;">'
+                            f'<strong>Question {err["q_idx"] + 1}:</strong> Graded as <span style="color: #EF4444; font-weight: 600;">{err["category"]}</span><br/>'
+                            f'<p style="margin-top: 5px; font-size: 0.9em; line-height: 1.4;">{err["feedback"]}</p>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    st.markdown("---")
+                    st.markdown("#### 💡 Targeted Recommendations")
+                    
+                    err_categories_in_session = set(err["category"] for err in local_errors)
+                    for cat in err_categories_in_session:
+                        if cat == "Calculation Error":
+                            st.markdown(
+                                "👉 **Calculation Error**: Double-check arithmetic, write down intermediate calculation steps, "
+                                "and verify decimal places/inputs on your calculator."
+                            )
+                        elif cat == "Conceptual Gap":
+                            st.markdown(
+                                "👉 **Conceptual Gap**: Review the underlying CFA curriculum readings for this specific section. "
+                                "Make notes of assumptions, parameters, and structural dynamics."
+                            )
+                        elif cat == "Formula Misuse":
+                            st.markdown(
+                                "👉 **Formula Misuse**: Maintain a dedicated formula sheet. Write down the formulas daily and "
+                                "verify compounding periods (e.g. daily, monthly, semi-annual vs. annual compounding)."
+                            )
+                        elif cat == "Reading Misinterpretation":
+                            st.markdown(
+                                "👉 **Reading Misinterpretation**: Slow down when reading vignette descriptions. Highlight "
+                                "qualifiers like *except*, *most likely*, *least likely*, and trace the correct date references."
+                            )
+                        else:
+                            st.markdown(
+                                f"👉 **{cat}**: Carefully read the official rationale to understand the gap between your logic and the correct answer."
+                            )
+                else:
+                    st.balloons()
+                    st.markdown(
+                        '<div class="feedback-box feedback-correct" style="margin-top: 15px;">'
+                        '<h4>🌟 Perfect Score!</h4>'
+                        '<p>Superb performance! You got all questions in this vignette correct. You have demonstrated '
+                        'excellent conceptual mastery and detail-oriented focus for this topic!</p>'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+                
+                # Cumulative progress overview
+                st.markdown("---")
+                st.markdown("#### 📈 Cumulative Performance Analysis")
+                stats = progress.get("statistics", {})
+                error_stats = {k: v for k, v in stats.items() if k != "None" and v > 0}
+                
+                if error_stats:
+                    sorted_weaknesses = sorted(error_stats.items(), key=lambda x: x[1], reverse=True)
+                    top_weakness, count = sorted_weaknesses[0]
+                    
+                    st.warning(f"⚠️ Your most frequent cumulative weakness across all study sessions is **{top_weakness}** (triggered **{count}** times).")
+                    
+                    if top_weakness == "Calculation Error":
+                        st.info("💡 **Practice Action**: Focus on step-by-step arithmetic verification. Don't skip writing down intermediate steps.")
+                    elif top_weakness == "Conceptual Gap":
+                        st.info("💡 **Practice Action**: Focus on studying core curriculum concepts. Create flashcards for vocabulary and assumptions.")
+                    elif top_weakness == "Formula Misuse":
+                        st.info("💡 **Practice Action**: Dedicate study time to active formula recall. Write down formulas from memory and outline their parameters.")
+                    elif top_weakness == "Reading Misinterpretation":
+                        st.info("💡 **Practice Action**: Practice scanning vignettes for negations/extremes ('except', 'not', 'only', 'must'). Slow down on reading.")
+                else:
+                    st.info("No errors recorded yet. Practice more questions to get personalized cumulative insights!")
+            
+            st.markdown("---")
             st.success("🎉 You have completed all questions in this case study!")
             if st.button("Move to Next Case Study ➡️", type="primary"):
                 # Track completed vignette topic to avoid repeating
