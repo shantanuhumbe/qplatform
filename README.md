@@ -21,6 +21,7 @@ This repository features two pre-extracted quiz bank options parsed with absolut
 
 ## 🚀 Key Features
 
+*   **TI BA II Plus Financial Calculator Replica**: Collapsible, fully-functional calculator drawer rendered directly above the practice interface. Replicates the exact button layout, LCD display indicators, 2nd-key options, and advanced worksheets (TVM, Cash Flows, Amortization, Bond, and Depreciation) of the physical TI BA II Plus.
 *   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or scrambled text).
 *   **PDF Extraction & Layout Correction**:
     *   *Floating Labels Merging*: Resolves extraction line-breaking where vertically centered option letters (A, B, C) are placed on separate lines by merging them with their corresponding text based on horizontal coordinate ranges.
@@ -58,6 +59,7 @@ qplatform/
 │   └── parse_qbank_merged.py# Script parsing the merged Q-bank with layout/grouping algorithms
 └── quizapp/
     ├── app.py              # Streamlit application layout
+    ├── calculator.py       # TI BA II Plus financial calculator & worksheets replica
     ├── config.py           # CFA page mappings and system prompts
     ├── grader.py           # Gemini API grading request builder
     ├── models.py           # Pydantic schemas enforcing structures
@@ -66,7 +68,8 @@ qplatform/
     │   ├── components.py   # UI navigation dots and sidebar elements
     │   └── styles.py       # Custom premium dark mode CSS injection
     └── utils/
-        └── data_manager.py # IO helpers reading JSON databases
+        ├── data_manager.py # IO helpers reading JSON databases
+        └── table_renderer.py # High-fidelity tables parsing and rendering engine
 ```
 
 ---
