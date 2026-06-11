@@ -507,6 +507,8 @@ def _init_state():
         "cf_idx": 0,
         "cf_rate": 0.0,
         "_cpt": False,
+        "calc_sto_pending": False,
+        "calc_rcl_pending": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -594,6 +596,8 @@ def _handle(action):
 
     # ── CE/C ──
     if action == "CEC":
+        s.calc_sto_pending = False
+        s.calc_rcl_pending = False
         if is2:
             # CLR WORK
             if s.calc_mode == "CF":
@@ -616,6 +620,40 @@ def _handle(action):
     # ── Digits ──
     if action.startswith("D") and action[1:].isdigit():
         d = action[1:]
+        
+        # Check if STO or RCL is pending
+        if s.get("calc_sto_pending"):
+            reg = int(d)
+            v = _val()
+            s.calc_mem[reg] = v
+            s.calc_ind = f"STO {reg}"
+            s.calc_sto_pending = False
+            s.calc_new = True
+            if is2: _off2()
+            return
+            
+        if s.get("calc_rcl_pending"):
+            reg = int(d)
+            v = s.calc_mem.get(reg, 0.0)
+            s.calc_disp = _fmt(v)
+            s.calc_cur = str(v)
+            s.calc_ind = f"RCL {reg}"
+            s.calc_rcl_pending = False
+            s.calc_new = True
+            if is2: _off2()
+            return
+
+        if is2 and action == "D0":
+            # MEM worksheet
+            mem_summary = ", ".join(f"M{k}:{_fmt(v)}" for k, v in sorted(s.calc_mem.items()) if v != 0)
+            if not mem_summary:
+                mem_summary = "All registers empty"
+            s.calc_disp = "MEM"
+            s.calc_ind = mem_summary[:30]
+            s.calc_new = True
+            _off2()
+            return
+
         if s.calc_new:
             s.calc_cur = d
             s.calc_new = False
@@ -859,32 +897,26 @@ def _handle(action):
 
     # ── STO ──
     if action == "STO":
-        v = _val()
         if s.calc_mode == "CF":
+            v = _val()
             idx = s.cf_idx
             if idx < len(s.cf_flows):
                 s.cf_flows[idx] = v
             else:
                 s.cf_flows.append(v)
             s.calc_ind = f"CF{idx}={_fmt(v)}"
+            s.calc_new = True
         else:
-            if is2:
-                # MEM — show memory contents
-                s.calc_ind = f"MEM: {_fmt(s.calc_mem.get(0, 0.0))}"
-                _off2()
-                return
-            s.calc_mem[0] = v
-            s.calc_ind = f"STO={_fmt(v)}"
-        s.calc_new = True
+            s.calc_sto_pending = True
+            s.calc_rcl_pending = False
+            s.calc_ind = "STO"
         if is2: _off2()
         return
 
     # ── RCL ──
     if action == "RCL":
-        v = s.calc_mem.get(0, 0.0)
-        s.calc_disp = _fmt(v)
-        s.calc_cur = str(v)
-        s.calc_new = True
+        s.calc_rcl_pending = True
+        s.calc_sto_pending = False
         s.calc_ind = "RCL"
         if is2: _off2()
         return
