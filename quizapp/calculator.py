@@ -446,6 +446,14 @@ def _render_ba_ii_plus():
     mode_parts = []
     if st.session_state.get("calc_2nd"):
         mode_parts.append("🟡 2nd")
+    if st.session_state.get("calc_inv"):
+        mode_parts.append("INV")
+    if st.session_state.get("calc_hyp"):
+        mode_parts.append("HYP")
+    if st.session_state.get("calc_angle", "DEG") == "RAD":
+        mode_parts.append("RAD")
+    if st.session_state.get("tvm_bgn"):
+        mode_parts.append("BGN")
     m = st.session_state.get("calc_mode", "CALC")
     if m == "TVM":
         mode_parts.append("TVM")
@@ -510,7 +518,14 @@ def _init_state():
         "calc_sto_pending": False,
         "calc_rcl_pending": False,
         "calc_decimals": 2,
-        "calc_decimals_pending": False,
+        "calc_inv": False,
+        "calc_hyp": False,
+        "calc_angle": "DEG",
+        "calc_date_fmt": "US",
+        "calc_sep": "US",
+        "calc_aos": "ChN",
+        "format_active": False,
+        "format_index": 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -573,6 +588,99 @@ def _exec_op(a, op, b):
     return b
 
 
+def _compute_trig(func, v):
+    s = st.session_state
+    inv = s.get("calc_inv", False)
+    hyp = s.get("calc_hyp", False)
+    is_rad = (s.get("calc_angle", "DEG") == "RAD")
+    
+    # Reset modifiers
+    s.calc_inv = False
+    s.calc_hyp = False
+    
+    try:
+        if func == "SIN":
+            if hyp:
+                if inv:
+                    r = math.asinh(v)
+                    label = f"ASINH({v})"
+                else:
+                    r = math.sinh(v)
+                    label = f"SINH({v})"
+            else:
+                if inv:
+                    r = math.asin(v)
+                    if not is_rad:
+                        r = math.degrees(r)
+                    label = f"ASIN({v})"
+                else:
+                    arg = v if is_rad else math.radians(v)
+                    r = math.sin(arg)
+                    label = f"SIN({v})"
+        elif func == "COS":
+            if hyp:
+                if inv:
+                    r = math.acosh(v)
+                    label = f"ACOSH({v})"
+                else:
+                    r = math.cosh(v)
+                    label = f"COSH({v})"
+            else:
+                if inv:
+                    r = math.acos(v)
+                    if not is_rad:
+                        r = math.degrees(r)
+                    label = f"ACOS({v})"
+                else:
+                    arg = v if is_rad else math.radians(v)
+                    r = math.cos(arg)
+                    label = f"COS({v})"
+        elif func == "TAN":
+            if hyp:
+                if inv:
+                    r = math.atanh(v)
+                    label = f"ATANH({v})"
+                else:
+                    r = math.tanh(v)
+                    label = f"TANH({v})"
+            else:
+                if inv:
+                    r = math.atan(v)
+                    if not is_rad:
+                        r = math.degrees(r)
+                    label = f"ATAN({v})"
+                else:
+                    arg = v if is_rad else math.radians(v)
+                    if not is_rad and (int(abs(v)) % 180 == 90):
+                        r = float("inf")
+                    else:
+                        r = math.tan(arg)
+                    label = f"TAN({v})"
+        return r, label
+    except Exception:
+        return float("nan"), f"{func} Error"
+
+
+def _update_format_display():
+    s = st.session_state
+    idx = s.get("format_index", 0)
+    if idx == 0:
+        s.calc_ind = "DEC"
+        s.calc_disp = str(s.get("calc_decimals", 2))
+    elif idx == 1:
+        s.calc_ind = "DEG RAD"
+        s.calc_disp = s.get("calc_angle", "DEG")
+    elif idx == 2:
+        s.calc_ind = "DATE"
+        s.calc_disp = s.get("calc_date_fmt", "US")
+    elif idx == 3:
+        s.calc_ind = "SEP"
+        s.calc_disp = s.get("calc_sep", "US")
+    elif idx == 4:
+        s.calc_ind = "AOS ChN"
+        s.calc_disp = s.get("calc_aos", "ChN")
+
+
 # ══════════════════════════════════════════════════════════════
 # KEY HANDLER
 # ══════════════════════════════════════════════════════════════
@@ -584,7 +692,92 @@ def _handle(action):
 
     def _off2():
         s.calc_2nd = False
-        s.calc_ind = ""
+
+    # ── FORMAT menu overrides ──
+    if s.get("format_active"):
+        if action == "2ND":
+            s.calc_2nd = not is2
+            s.calc_ind = "2ND" if not is2 else ""
+            return
+
+        if action == "ONOFF":
+            s.format_active = False
+            for k in ("calc_disp", "calc_cur", "calc_op", "calc_prev", "calc_ind", "calc_inv", "calc_hyp"):
+                s[k] = {"calc_disp": "0", "calc_cur": "", "calc_op": None, "calc_prev": None, "calc_ind": "", "calc_inv": False, "calc_hyp": False}[k]
+            s.calc_new = True
+            s.calc_2nd = False
+            s.calc_mode = "CALC"
+            s._cpt = False
+            return
+            
+        if action == "CEC":
+            s.format_active = False
+            s.calc_disp = "0"
+            s.calc_cur = ""
+            s.calc_op = None
+            s.calc_prev = None
+            s.calc_new = True
+            s.calc_ind = ""
+            s.calc_inv = False
+            s.calc_hyp = False
+            if is2: _off2()
+            return
+            
+        if action == "CPT" and is2: # QUIT
+            s.format_active = False
+            s.calc_disp = "0"
+            s.calc_ind = ""
+            s.calc_new = True
+            _off2()
+            return
+
+        if action in ("UP", "DOWN"):
+            idx = s.get("format_index", 0)
+            if action == "UP":
+                idx = (idx - 1) % 5
+            else:
+                idx = (idx + 1) % 5
+            s.format_index = idx
+            _update_format_display()
+            if is2: _off2()
+            return
+            
+        # If in decimals format screen, accept digit keying
+        if s.get("format_index", 0) == 0:
+            if action.startswith("D") and action[1:].isdigit():
+                d = action[1:]
+                s.calc_disp = d
+                s.calc_new = True
+                if is2: _off2()
+                return
+            if action == "ENT" and not is2:
+                try:
+                    d = int(s.calc_disp)
+                    if 0 <= d <= 9:
+                        s.calc_decimals = d
+                        s.calc_ind = f"DEC = {d}"
+                except Exception:
+                    pass
+                return
+
+        # If in other settings screens, toggle with 2nd SET (2nd + ENTER)
+        if s.get("format_index", 0) > 0:
+            if action == "ENT" and is2: # 2nd SET
+                idx = s.get("format_index", 0)
+                if idx == 1:
+                    s.calc_angle = "RAD" if s.get("calc_angle", "DEG") == "DEG" else "DEG"
+                elif idx == 2:
+                    s.calc_date_fmt = "EUR" if s.get("calc_date_fmt", "US") == "US" else "US"
+                elif idx == 3:
+                    s.calc_sep = "CHN" if s.get("calc_sep", "US") == "US" else "US"
+                elif idx == 4:
+                    s.calc_aos = "AOS" if s.get("calc_aos", "ChN") == "ChN" else "ChN"
+                _update_format_display()
+                _off2()
+                return
+        
+        # In format mode, ignore any other key
+        return
 
     # ── 2nd ──
     if action == "2ND":
@@ -594,8 +787,8 @@ def _handle(action):
 
     # ── ON/OFF ──
     if action == "ONOFF":
-        for k in ("calc_disp", "calc_cur", "calc_op", "calc_prev", "calc_ind", "calc_inv"):
-            s[k] = {"calc_disp": "0", "calc_cur": "", "calc_op": None, "calc_prev": None, "calc_ind": "", "calc_inv": False}[k]
+        for k in ("calc_disp", "calc_cur", "calc_op", "calc_prev", "calc_ind", "calc_inv", "calc_hyp"):
+            s[k] = {"calc_disp": "0", "calc_cur": "", "calc_op": None, "calc_prev": None, "calc_ind": "", "calc_inv": False, "calc_hyp": False}[k]
         s.calc_new = True
         s.calc_2nd = False
         s.calc_mode = "CALC"
@@ -617,7 +810,8 @@ def _handle(action):
     if action == "CEC":
         s.calc_sto_pending = False
         s.calc_rcl_pending = False
-        s.calc_decimals_pending = False
+        s.calc_inv = False
+        s.calc_hyp = False
         if is2:
             # CLR WORK
             if s.calc_mode == "CF":
@@ -634,23 +828,12 @@ def _handle(action):
             s.calc_prev = None
             s.calc_new = True
             s.calc_ind = ""
-        s.calc_inv = False
         return
 
     # ── Digits ──
     if action.startswith("D") and action[1:].isdigit():
         d = action[1:]
         
-        # Check if decimals setting is pending
-        if s.get("calc_decimals_pending"):
-            reg = int(d)
-            s.calc_decimals = reg
-            s.calc_ind = f"DEC = {reg}"
-            s.calc_decimals_pending = False
-            s.calc_new = True
-            if is2: _off2()
-            return
-            
         # Check if STO or RCL is pending
         if s.get("calc_sto_pending"):
             reg = int(d)
@@ -697,8 +880,11 @@ def _handle(action):
     # ── Decimal ──
     if action == "DOT":
         if is2:
-            s.calc_decimals_pending = True
-            s.calc_ind = f"DEC = {s.calc_decimals}"
+            s.format_active = True
+            s.format_index = 0
+            s.calc_ind = "DEC"
+            s.calc_disp = str(s.get("calc_decimals", 2))
+            s.calc_new = True
             _off2()
             return
             
@@ -717,7 +903,7 @@ def _handle(action):
         if is2:
             # RESET
             for k in list(s.keys()):
-                if k.startswith("calc_") or k.startswith("tvm_") or k.startswith("cf_") or k == "_cpt":
+                if k.startswith("calc_") or k.startswith("tvm_") or k.startswith("cf_") or k == "_cpt" or k.startswith("format_"):
                     del s[k]
             _init_state()
             s.calc_disp = "0"
@@ -763,11 +949,24 @@ def _handle(action):
                 return
                 
             if action == "DIV":
-                # RAND
-                import random
-                r = random.random()
-                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
-                s.calc_ind = "RAND"
+                # RAND or SEED
+                if s.get("calc_sto_pending"):
+                    v = _val()
+                    import random
+                    try:
+                        seed_val = int(v)
+                        if seed_val > 0:
+                            random.seed(seed_val)
+                            s.calc_disp = _fmt(v)
+                            s.calc_ind = f"SEED {seed_val}"
+                    except Exception:
+                        pass
+                    s.calc_sto_pending = False
+                else:
+                    import random
+                    r = random.random()
+                    s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+                    s.calc_ind = "RAND"
                 _off2()
                 return
                 
@@ -863,15 +1062,9 @@ def _handle(action):
         cv = _val()
         if is2:
             # TAN
-            try:
-                if math.cos(math.radians(cv)) == 0:
-                    r = float("inf")
-                else:
-                    r = math.tan(math.radians(cv))
-            except Exception:
-                r = float("nan")
+            r, label = _compute_trig("TAN", cv)
             s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
-            s.calc_ind = f"TAN({cv})"
+            s.calc_ind = label
             _off2()
         else:
             s.calc_prev = cv
@@ -890,9 +1083,11 @@ def _handle(action):
         return
 
     if action == "INV":
-        s.calc_inv = not s.get("calc_inv", False)
-        s.calc_ind = "INV" if s.calc_inv else ""
-        if is2: _off2()
+        if is2:
+            s.calc_hyp = not s.get("calc_hyp", False)
+            _off2()
+        else:
+            s.calc_inv = not s.get("calc_inv", False)
         return
 
     # ── CPT ──
@@ -1072,21 +1267,16 @@ def _handle(action):
             s.calc_new = True
         return
 
-    # ── Parentheses (simplified) ──
+    # ── Parentheses (trig) ──
     if action in ("LP", "RP"):
         if is2:
+            v = _val()
             if action == "LP":
-                # SIN
-                v = _val()
-                r = math.sin(math.radians(v))
-                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
-                s.calc_ind = f"SIN({v})"
-            elif action == "RP":
-                # COS
-                v = _val()
-                r = math.cos(math.radians(v))
-                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
-                s.calc_ind = f"COS({v})"
+                r, label = _compute_trig("SIN", v)
+            else:
+                r, label = _compute_trig("COS", v)
+            s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+            s.calc_ind = label
             _off2()
             return
         return
