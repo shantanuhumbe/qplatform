@@ -815,6 +815,27 @@ def _handle(action):
         nice = action.replace("IY", "I/Y")
         s.calc_mode = "TVM"
 
+        # Check if RCL is pending
+        if s.get("calc_rcl_pending"):
+            v = s.get(reg, 0.0)
+            s.calc_disp = _fmt(v)
+            s.calc_cur = str(v)
+            s.calc_ind = f"RCL {nice}"
+            s.calc_rcl_pending = False
+            s.calc_new = True
+            if is2: _off2()
+            return
+
+        # Check if STO is pending
+        if s.get("calc_sto_pending"):
+            v = _val()
+            s[reg] = v
+            s.calc_ind = f"STO {nice}"
+            s.calc_sto_pending = False
+            s.calc_new = True
+            if is2: _off2()
+            return
+
         if is2:
             if action == "N":
                 v = _val()
