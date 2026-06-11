@@ -2,7 +2,9 @@
 
 A generic, high-performance, and visually stunning Streamlit web application designed to help candidates prepare for the CFA Level II / Level III exams using vignette-based practice questions.
 
-This repository features a pre-extracted quiz bank containing **233 vignettes** and **1,676 practice questions** parsed with absolute paragraph-level fidelity directly from the curriculum PDF.
+This repository features two pre-extracted quiz bank options parsed with absolute paragraph-level fidelity directly from the curriculum PDF:
+1.  **CFA Combined QB (Default)**: Contains **233 vignettes** and **1,676 practice questions**.
+2.  **Merged Q-Bank (qbank_merged)**: Contains **226 vignettes** and **2,456 practice questions** with advanced parser corrections applied.
 
 ---
 
@@ -20,6 +22,10 @@ This repository features a pre-extracted quiz bank containing **233 vignettes** 
 ## 🚀 Key Features
 
 *   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or scrambled text).
+*   **PDF Extraction & Layout Correction**:
+    *   *Floating Labels Merging*: Resolves extraction line-breaking where vertically centered option letters (A, B, C) are placed on separate lines by merging them with their corresponding text based on horizontal coordinate ranges.
+    *   *Fake Vignette Sequential Grouping*: Groups contiguous questions sequentially relative to their learning modules, avoiding scrambled case studies caused by overlapping question indexes.
+    *   *Empty Vignette Auto-Conversion*: Automatically converts empty vignette scenario blocks into standalone practice questions, preventing empty panels.
 *   **Dual Grading System**:
     *   *Dynamic AI Grading*: Powered by Google's Gemini API, providing granular, conceptual explanations of correct answers and diagnosing error categories (e.g. Calculation Error, Conceptual Gap, Formula Misuse).
     *   *Offline Local Fallback*: Automatically acts as a local fallback in case of rate-limiting, network issues, or daily quota limits, comparing selected choices against local answers instantly.
@@ -41,12 +47,15 @@ qplatform/
 ├── README.md               # Beautiful documentation and guide
 ├── run.py                  # CLI Dispatcher (web / parse options)
 ├── requirements.txt        # Package dependencies list
-├── questions_bank.json     # Pre-populated parsed vignette database
-├── user_progress.json      # Saved statistics and completed answers
+├── questions_bank.json     # Pre-populated default vignette database
+├── qbank_merged.json       # Pre-populated merged and formatted database (2,456 questions)
+├── user_progress.json      # Saved statistics and completed default answers
+├── user_progress_merged.json # Saved statistics and completed merged answers
 ├── assets/
 │   └── quiz_app_screenshot.png # Blurred application preview screenshot
 ├── scripts/
-│   └── parse_pdf_offline.py# High-performance PDF parser utility
+│   ├── parse_pdf_offline.py# High-performance default PDF parser utility
+│   └── parse_qbank_merged.py# Script parsing the merged Q-bank with layout/grouping algorithms
 └── quizapp/
     ├── app.py              # Streamlit application layout
     ├── config.py           # CFA page mappings and system prompts
@@ -107,13 +116,20 @@ You can activate dynamic AI grading in two ways:
 
 ## 🛠️ Utility Scripts
 
-### Offline PDF Extraction Utility
-If you ever need to re-parse the PDF or build a fresh questions bank, you can run the packed offline parser:
+### Offline PDF Extraction Utilities
+If you ever need to re-parse the PDF or build a fresh questions bank, you can run either of the packed offline parsers:
 
-```bash
-python3 scripts/parse_pdf_offline.py
-```
-This utility reads all **30 Learning Modules** (representing page bounds 1 to 980) from the `CFA Combined QB (1).pdf` and extracts all questions, options, and explanations into `questions_bank.json` in less than 15 seconds.
+*   **Default Q-Bank Parser**:
+    ```bash
+    python3 scripts/parse_pdf_offline.py
+    ```
+    This utility reads all **30 Learning Modules** (representing page bounds 1 to 980) from `CFA Combined QB (1).pdf` and extracts questions, options, and explanations into `questions_bank.json` in less than 15 seconds.
+
+*   **Merged Q-Bank Parser**:
+    ```bash
+    python3 scripts/parse_qbank_merged.py
+    ```
+    This utility compiles all modules and applies option layout line-merging, sequential grouping, and empty vignette-to-standalone auto-conversion, exporting the results to `qbank_merged.json`.
 
 ### Online PDF Parser
 To parse a custom page range or single module using the Gemini API:
