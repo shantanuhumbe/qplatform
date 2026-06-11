@@ -10,6 +10,28 @@ def render_sidebar(progress, vignettes):
         st.markdown("<h2 style='text-align: center; color: #3B82F6;'>🎯 Study Dashboard</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
+        # 0. Question Bank Selector
+        st.subheader("📚 Question Bank")
+        active_db = st.session_state.get("active_db", "default")
+        db_options = {
+            "default": "CFA Combined QB (Default)",
+            "merged": "Merged Q-Bank (qbank_merged)"
+        }
+        selected_db = st.selectbox(
+            "Select Question Bank",
+            options=["default", "merged"],
+            format_func=lambda x: db_options[x],
+            index=0 if active_db == "default" else 1,
+            help="Select which question bank database to load questions from."
+        )
+        if selected_db != active_db:
+            st.session_state.active_db = selected_db
+            st.session_state.active_vignette_topic = ""
+            st.session_state.question_index = 0
+            st.rerun()
+            
+        st.markdown("---")
+        
         # 1. API Configuration
         st.subheader("🔑 API Settings")
         
@@ -160,8 +182,10 @@ def render_sidebar(progress, vignettes):
                 if all(k in uploaded_data for k in required_keys):
                     if uploaded_data != progress:
                         from quizapp.utils.data_manager import save_progress
-                        from quizapp.config import DEFAULT_PROGRESS_PATH
-                        save_progress(DEFAULT_PROGRESS_PATH, uploaded_data)
+                        from quizapp.config import DEFAULT_PROGRESS_PATH, MERGED_PROGRESS_PATH
+                        active_db = st.session_state.get("active_db", "default")
+                        prog_path = MERGED_PROGRESS_PATH if active_db == "merged" else DEFAULT_PROGRESS_PATH
+                        save_progress(prog_path, uploaded_data)
                         st.success("✅ Progress uploaded and restored!")
                         st.rerun()
                 else:

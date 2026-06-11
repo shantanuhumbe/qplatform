@@ -9,7 +9,7 @@ if _parent_dir not in sys.path:
 
 from quizapp.utils.table_renderer import render_case_study
 import streamlit as st
-from quizapp.config import DEFAULT_OUTPUT_PATH, DEFAULT_PROGRESS_PATH, DEFAULT_GRADE_MODEL
+from quizapp.config import DEFAULT_OUTPUT_PATH, DEFAULT_PROGRESS_PATH, DEFAULT_GRADE_MODEL, MERGED_OUTPUT_PATH, MERGED_PROGRESS_PATH
 from quizapp.utils.data_manager import load_questions_bank, load_progress, save_progress
 from quizapp.ui.styles import apply_custom_styles
 from quizapp.ui.components import render_sidebar, render_navigation_dots
@@ -21,6 +21,26 @@ st.set_page_config(layout="wide", page_title="CFA Case Study Quiz App", page_ico
 
 def main():
     apply_custom_styles()
+    
+    # 0. Handle URL Query Parameters (initialize state if present in URL)
+    if "active_db" not in st.session_state:
+        url_q_bank = st.query_params.get("q_bank")
+        if url_q_bank in ["default", "merged"]:
+            st.session_state.active_db = url_q_bank
+        else:
+            st.session_state.active_db = "default"
+
+    if "grade_model" not in st.session_state:
+        url_model = st.query_params.get("model")
+        valid_models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.5-pro"]
+        if url_model in valid_models:
+            st.session_state.grade_model = url_model
+        else:
+            st.session_state.grade_model = "gemini-2.5-flash"
+            
+    # Sync current values to URL parameters so they appear in browser URL
+    st.query_params["q_bank"] = st.session_state.active_db
+    st.query_params["model"] = st.session_state.grade_model
     
     # 1. Initialize API key and state variables
     if "api_key" not in st.session_state:
@@ -38,10 +58,18 @@ def main():
     if "question_index" not in st.session_state:
         st.session_state.question_index = 0
         
+    active_db = st.session_state.get("active_db", "default")
+    if active_db == "merged":
+        vignette_path = MERGED_OUTPUT_PATH
+        progress_path = MERGED_PROGRESS_PATH
+    else:
+        vignette_path = DEFAULT_OUTPUT_PATH
+        progress_path = DEFAULT_PROGRESS_PATH
+
     if "reset_progress" in st.session_state and st.session_state.reset_progress:
-        if os.path.exists(DEFAULT_PROGRESS_PATH):
+        if os.path.exists(progress_path):
             try:
-                os.remove(DEFAULT_PROGRESS_PATH)
+                os.remove(progress_path)
             except:
                 pass
         if "active_vignette_topic" in st.session_state:
@@ -51,8 +79,8 @@ def main():
         st.success("Session progress reset successfully!")
         
     # Load question bank and progress databases
-    vignettes = load_questions_bank(DEFAULT_OUTPUT_PATH)
-    progress = load_progress(DEFAULT_PROGRESS_PATH)
+    vignettes = load_questions_bank(vignette_path)
+    progress = load_progress(progress_path)
     
     # Sidebar rendering
     render_sidebar(progress, vignettes)
@@ -190,8 +218,23 @@ def main():
                 user_expl = answer_data.get("user_explanation", "")
                 feedback = answer_data.get("feedback", {})
                 
-                # Show selected answer
-                st.markdown(f"**Your selected option:** `{user_ans}`")
+                # Show all options with selection highlighting
+                st.markdown("#### 📋 Question Options:")
+                for opt in options:
+                    opt_letter = opt.strip()[0].upper() if (opt.strip() and opt.strip()[0].upper() in ['A', 'B', 'C']) else ""
+                    is_correct = opt_letter == q.get('correct_answer', '').upper()
+                    is_user = opt_letter == user_ans.upper()
+                    
+                    if is_correct and is_user:
+                        st.markdown(f"<div style='padding: 8px 12px; border-radius: 6px; background-color: rgba(16, 185, 129, 0.15); border-left: 5px solid #10B981; margin-bottom: 6px; font-family: sans-serif;'>🟢 <strong>{opt}</strong> <em>(Selected & Correct)</em></div>", unsafe_allow_html=True)
+                    elif is_correct:
+                        st.markdown(f"<div style='padding: 8px 12px; border-radius: 6px; background-color: rgba(59, 130, 246, 0.15); border-left: 5px solid #3B82F6; margin-bottom: 6px; font-family: sans-serif;'>🔵 <strong>{opt}</strong> <em>(Correct Answer)</em></div>", unsafe_allow_html=True)
+                    elif is_user:
+                        st.markdown(f"<div style='padding: 8px 12px; border-radius: 6px; background-color: rgba(239, 68, 68, 0.15); border-left: 5px solid #EF4444; margin-bottom: 6px; font-family: sans-serif;'>🔴 <del>{opt}</del> <em>(Selected & Incorrect)</em></div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div style='padding: 8px 12px; border-radius: 6px; background-color: rgba(255, 255, 255, 0.05); margin-bottom: 6px; font-family: sans-serif; opacity: 0.7;'>⚪ {opt}</div>", unsafe_allow_html=True)
+                st.markdown("")
+                
                 if user_expl:
                     st.markdown(f"**Your reasoning:**\n> *{user_expl}*")
                 
@@ -256,7 +299,7 @@ def main():
                                     progress["statistics"][err_cat] = 0
                                 progress["statistics"][err_cat] += 1
                                 
-                                save_progress(DEFAULT_PROGRESS_PATH, progress)
+                                save_progress(progress_path, progress)
                                 st.rerun()
                 
                 # Display official rationale
@@ -264,6 +307,38 @@ def main():
                 with st.expander("📖 View Official Rationale / Explanation"):
                     st.markdown(f"**Correct Option Letter:** `{q.get('correct_answer', '')}`")
                     st.markdown(q.get("official_explanation", ""))
+                    
+                # AI Tutor follow-up chat discussion
+                st.markdown("---")
+                st.markdown("<h4 style='font-family: \"Outfit\", sans-serif;'>💬 Discuss with Gemini Tutor</h4>", unsafe_allow_html=True)
+                chat_query = st.text_input(
+                    "Ask a question about this vignette, options, or grading:",
+                    placeholder="e.g. Can you explain the formula used in the official explanation?",
+                    key=f"tutor_chat_{q_key}"
+                )
+                
+                if chat_query:
+                    if not st.session_state.get("api_key"):
+                        st.warning("⚠️ Please provide a Gemini API Key in the sidebar settings to use the AI Tutor.")
+                    else:
+                        from quizapp.grader import explain_question_llm
+                        with st.spinner("Gemini is formulating an explanation..."):
+                            response = explain_question_llm(
+                                api_key=st.session_state.api_key,
+                                model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
+                                vignette_text=raw_case_text,
+                                question_text=q.get("question_text", ""),
+                                options=options,
+                                selected_option=user_ans,
+                                correct_option=q.get("correct_answer", ""),
+                                official_explanation=q.get("official_explanation", ""),
+                                user_query=chat_query
+                            )
+                            
+                            with st.chat_message("user"):
+                                st.markdown(chat_query)
+                            with st.chat_message("assistant"):
+                                st.markdown(response)
                     
             else:
                 # Question is unanswered: Render options radio and submit controls
@@ -329,7 +404,7 @@ def main():
                         progress["statistics"][err_cat] = 0
                     progress["statistics"][err_cat] += 1
                     
-                    save_progress(DEFAULT_PROGRESS_PATH, progress)
+                    save_progress(progress_path, progress)
                     st.rerun()
                             
             # 4. Question Navigation controls
@@ -460,7 +535,7 @@ def main():
                 # Track completed vignette topic to avoid repeating
                 if active_vignette["topic"] not in progress["completed_vignettes"]:
                     progress["completed_vignettes"].append(active_vignette["topic"])
-                    save_progress(DEFAULT_PROGRESS_PATH, progress)
+                    save_progress(progress_path, progress)
                     
                 # Pick next vignette by clearing topic so selection runs on rerun
                 if "active_vignette_topic" in st.session_state:

@@ -105,3 +105,65 @@ def grade_user_answer(api_key, model, question_text, options, selected_option, c
             "error_category": "None" if is_match else "Unclassified",
             "calculation_error_identified": False
         }
+
+def explain_question_llm(api_key, model, vignette_text, question_text, options, selected_option, correct_option, official_explanation, user_query):
+    """Sends a point-in-time tutor question to Gemini API and returns the AI's explanation."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    prompt = (
+        f"You are a professional CFA Level II tutor helping a student understand a practice question.\n\n"
+        f"--- VIGNETTE CONTEXT ---\n"
+        f"{vignette_text}\n\n"
+        f"--- QUESTION ---\n"
+        f"{question_text}\n\n"
+        f"--- OPTIONS ---\n" + "\n".join(f"  - {opt}" for opt in options) + "\n\n"
+        f"--- CORRECT ANSWER ---\n"
+        f"Option {correct_option}\n\n"
+        f"--- STUDENT SELECTED ---\n"
+        f"Option {selected_option}\n\n"
+        f"--- OFFICIAL EXPLANATION ---\n"
+        f"{official_explanation}\n\n"
+        f"--- STUDENT'S QUESTION/CONFUSION ---\n"
+        f"{user_query}\n\n"
+        f"Provide a clear, helpful, and concise response to the student's question, explaining the concept or calculation step-by-step."
+    )
+    
+    request_data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    req_body = json.dumps(request_data).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            res_data = response.read().decode("utf-8")
+            res_json = json.loads(res_data)
+            
+            candidates = res_json.get("candidates", [])
+            if not candidates:
+                return "Gemini returned no candidates in response."
+                
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                return "Gemini returned empty content parts."
+                
+            return parts[0].get("text", "")
+            
+    except urllib.error.HTTPError as e:
+        try:
+            error_msg = e.read().decode("utf-8")
+        except:
+            error_msg = ""
+        return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
+    except Exception as e:
+        return f"Error: {e}"

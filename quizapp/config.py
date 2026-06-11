@@ -13,6 +13,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_PDF_PATH = os.path.join(BASE_DIR, "CFA Combined QB (1).pdf")
 DEFAULT_OUTPUT_PATH = os.path.join(BASE_DIR, "questions_bank.json")
 DEFAULT_PROGRESS_PATH = os.path.join(BASE_DIR, "user_progress.json")
+MERGED_OUTPUT_PATH = os.path.join(BASE_DIR, "qbank_merged.json")
+MERGED_PROGRESS_PATH = os.path.join(BASE_DIR, "user_progress_merged.json")
 
 # Default prompt templates
 PARSER_SYSTEM_INSTRUCTION = (
