@@ -509,6 +509,8 @@ def _init_state():
         "_cpt": False,
         "calc_sto_pending": False,
         "calc_rcl_pending": False,
+        "calc_decimals": 2,
+        "calc_decimals_pending": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -519,17 +521,24 @@ def _fmt(value):
     """Format number for LCD display."""
     if isinstance(value, str):
         return value
-    if value == float("inf") or value == float("-inf"):
-        return "Error"
-    if math.isnan(value):
+    if value == float("inf") or value == float("-inf") or math.isnan(value):
         return "Error"
     if abs(value) < 1e-12 and value != 0:
         return f"{value:.4e}"
-    if value == int(value) and abs(value) < 1e12:
-        return f"{int(value):,}"
-    if abs(value) >= 1e12:
-        return f"{value:.4e}"
-    return f"{value:,.6f}".rstrip("0").rstrip(".")
+        
+    decimals = st.session_state.get("calc_decimals", 2)
+    if decimals == 9:
+        # Floating point format
+        if value == int(value) and abs(value) < 1e12:
+            return f"{int(value):,}"
+        if abs(value) >= 1e12:
+            return f"{value:.4e}"
+        return f"{value:,.9f}".rstrip("0").rstrip(".")
+    else:
+        # Fixed point format
+        if abs(value) >= 1e12:
+            return f"{value:.4e}"
+        return f"{value:,.{decimals}f}"
 
 
 def _val():
@@ -549,6 +558,16 @@ def _exec_op(a, op, b):
         if op == "÷": return a / b if b != 0 else float("inf")
         if op == "yˣ": return a ** b
         if op == "x√y": return a ** (1.0 / b) if b != 0 else float("inf")
+        if op == "nPr":
+            n, r = int(a), int(b)
+            if n >= r >= 0:
+                return float(math.perm(n, r))
+            return float("nan")
+        if op == "nCr":
+            n, r = int(a), int(b)
+            if n >= r >= 0:
+                return float(math.comb(n, r))
+            return float("nan")
     except Exception:
         return float("nan")
     return b
@@ -598,6 +617,7 @@ def _handle(action):
     if action == "CEC":
         s.calc_sto_pending = False
         s.calc_rcl_pending = False
+        s.calc_decimals_pending = False
         if is2:
             # CLR WORK
             if s.calc_mode == "CF":
@@ -621,6 +641,16 @@ def _handle(action):
     if action.startswith("D") and action[1:].isdigit():
         d = action[1:]
         
+        # Check if decimals setting is pending
+        if s.get("calc_decimals_pending"):
+            reg = int(d)
+            s.calc_decimals = reg
+            s.calc_ind = f"DEC = {reg}"
+            s.calc_decimals_pending = False
+            s.calc_new = True
+            if is2: _off2()
+            return
+            
         # Check if STO or RCL is pending
         if s.get("calc_sto_pending"):
             reg = int(d)
@@ -666,6 +696,12 @@ def _handle(action):
 
     # ── Decimal ──
     if action == "DOT":
+        if is2:
+            s.calc_decimals_pending = True
+            s.calc_ind = f"DEC = {s.calc_decimals}"
+            _off2()
+            return
+            
         if s.calc_new:
             s.calc_cur = "0."
             s.calc_new = False
@@ -678,6 +714,17 @@ def _handle(action):
 
     # ── +/− ──
     if action == "NEG":
+        if is2:
+            # RESET
+            for k in list(s.keys()):
+                if k.startswith("calc_") or k.startswith("tvm_") or k.startswith("cf_") or k == "_cpt":
+                    del s[k]
+            _init_state()
+            s.calc_disp = "0"
+            s.calc_ind = "RESET"
+            _off2()
+            return
+            
         v = _val()
         v = -v
         s.calc_cur = str(v)
@@ -699,6 +746,49 @@ def _handle(action):
 
     # ── Operators ──
     if action in ("ADD", "SUB", "MUL", "DIV"):
+        if is2:
+            if action == "MUL":
+                # x!
+                v = _val()
+                try:
+                    if v < 0 or v != int(v):
+                        r = float("nan")
+                    else:
+                        r = float(math.factorial(int(v)))
+                except Exception:
+                    r = float("nan")
+                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+                s.calc_ind = f"{int(v)}!"
+                _off2()
+                return
+                
+            if action == "DIV":
+                # RAND
+                import random
+                r = random.random()
+                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+                s.calc_ind = "RAND"
+                _off2()
+                return
+                
+            if action == "SUB":
+                # nPr
+                s.calc_prev = _val()
+                s.calc_op = "nPr"
+                s.calc_ind = "nPr"
+                s.calc_new = True
+                _off2()
+                return
+                
+            if action == "ADD":
+                # nCr
+                s.calc_prev = _val()
+                s.calc_op = "nCr"
+                s.calc_ind = "nCr"
+                s.calc_new = True
+                _off2()
+                return
+                
         op = {"+": "+", "-": "-", "×": "×", "÷": "÷", "ADD": "+", "SUB": "-", "MUL": "×", "DIV": "÷"}[action]
         cv = _val()
         if s.calc_op and not s.calc_new:
@@ -772,16 +862,23 @@ def _handle(action):
     if action == "POW":
         cv = _val()
         if is2:
-            s.calc_prev = cv
-            s.calc_op = "x√y"
-            s.calc_ind = "x√y"
+            # TAN
+            try:
+                if math.cos(math.radians(cv)) == 0:
+                    r = float("inf")
+                else:
+                    r = math.tan(math.radians(cv))
+            except Exception:
+                r = float("nan")
+            s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+            s.calc_ind = f"TAN({cv})"
             _off2()
         else:
             s.calc_prev = cv
             s.calc_op = "yˣ"
             s.calc_ind = "yˣ"
-        s.calc_new = True
-        s.calc_inv = False
+            s.calc_new = True
+            s.calc_inv = False
         return
 
     if action == "INV_REC":
@@ -977,7 +1074,21 @@ def _handle(action):
 
     # ── Parentheses (simplified) ──
     if action in ("LP", "RP"):
-        if is2: _off2()
+        if is2:
+            if action == "LP":
+                # SIN
+                v = _val()
+                r = math.sin(math.radians(v))
+                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+                s.calc_ind = f"SIN({v})"
+            elif action == "RP":
+                # COS
+                v = _val()
+                r = math.cos(math.radians(v))
+                s.calc_disp = _fmt(r); s.calc_cur = str(r); s.calc_new = True
+                s.calc_ind = f"COS({v})"
+            _off2()
+            return
         return
 
     if is2: _off2()
