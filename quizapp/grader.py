@@ -125,7 +125,12 @@ def explain_question_llm(api_key, model, vignette_text, question_text, options, 
         f"{official_explanation}\n\n"
         f"--- STUDENT'S QUESTION/CONFUSION ---\n"
         f"{user_query}\n\n"
-        f"Provide a clear, helpful, and concise response to the student's question, explaining the concept or calculation step-by-step."
+        f"Provide a clear, helpful, and concise response to the student's question, explaining the concept or calculation step-by-step.\n\n"
+        f"FORMATTING INSTRUCTIONS:\n"
+        f"- Format all math calculations and formulas using standard LaTeX: use double dollar signs ($$ ... $$) on their own lines for block equations, and single dollar signs ($ ... $) for inline variables/expressions (e.g. $FCFF$).\n"
+        f"- Ensure there are proper spaces around all operators (e.g. +, -, *, =, x) to avoid character squashing.\n"
+        f"- Do NOT wrap LaTeX math blocks (with $ or $$) inside markdown bold (**) or italics (*).\n"
+        f"- Keep lists and paragraphs cleanly separated with double line breaks for maximum readability."
     )
     
     request_data = {
@@ -167,3 +172,32 @@ def explain_question_llm(api_key, model, vignette_text, question_text, options, 
         return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
     except Exception as e:
         return f"Error: {e}"
+
+def validate_api_key(api_key, model="gemini-2.5-flash"):
+    """Sends a lightweight prompt to validate the API key."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    request_data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": "Hello"}
+                ]
+            }
+        ]
+    }
+    headers = {"Content-Type": "application/json"}
+    req_body = json.dumps(request_data).encode("utf-8")
+    req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            return True, "Key is valid."
+    except urllib.error.HTTPError as e:
+        try:
+            err_data = json.loads(e.read().decode("utf-8"))
+            err_msg = err_data.get("error", {}).get("message", e.reason)
+        except:
+            err_msg = e.reason
+        return False, f"API Error: {err_msg}"
+    except Exception as e:
+        return False, f"Connection Error: {e}"

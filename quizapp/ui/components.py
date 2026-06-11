@@ -42,40 +42,69 @@ def render_sidebar(progress, vignettes):
             all(32 <= ord(c) <= 126 for c in env_key)
         )
         
-        curr_key = st.session_state.get("api_key", "")
-        curr_key_valid = (
-            len(curr_key) >= 10 and 
-            not any(c.isspace() for c in curr_key) and
-            all(32 <= ord(c) <= 126 for c in curr_key)
-        )
-        if not curr_key_valid and is_env_valid:
-            curr_key = env_key
-            st.session_state.api_key = env_key
+        if "api_key" not in st.session_state:
+            st.session_state.api_key = env_key if is_env_valid else ""
             
-        api_key = st.text_input("Gemini API Key", type="password", 
+        if "api_key_validation" not in st.session_state:
+            st.session_state.api_key_validation = None
+            
+        curr_key = st.session_state.api_key
+        
+        api_key_input = st.text_input("Gemini API Key", type="password", 
                                value=curr_key,
                                help="Optional. Used for dynamic AI grading and parsing new PDFs. Offline fallback grading is used if not provided.")
         
-        if api_key:
-            api_key_clean = api_key.strip()
-            is_input_valid = (
-                len(api_key_clean) >= 10 and 
-                not any(c.isspace() for c in api_key_clean) and
-                all(32 <= ord(c) <= 126 for c in api_key_clean)
-            )
-            if is_input_valid:
-                st.session_state.api_key = api_key_clean
+        # We process key change if user clicks button OR hits Enter (meaning input is different from saved session_state.api_key)
+        trigger_validation = False
+        st.markdown('<div class="api-key-btn-container">', unsafe_allow_html=True)
+        btn_clicked = st.button("Apply & Verify Key", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        if btn_clicked:
+            trigger_validation = True
+        elif api_key_input != curr_key:
+            # User changed input and hit Enter
+            trigger_validation = True
+            
+        if trigger_validation:
+            api_key_clean = api_key_input.strip()
+            if not api_key_clean:
+                st.session_state.api_key = ""
+                st.session_state.api_key_validation = None
+                st.rerun()
             else:
-                st.warning("⚠️ Invalid key format detected (spaces or special characters). Browser autofill might have inserted web text. Using env key or fallback.")
-                if is_env_valid:
-                    st.session_state.api_key = env_key
+                is_input_valid = (
+                    len(api_key_clean) >= 10 and 
+                    not any(c.isspace() for c in api_key_clean) and
+                    all(32 <= ord(c) <= 126 for c in api_key_clean)
+                )
+                if is_input_valid:
+                    from quizapp.grader import validate_api_key
+                    model = st.session_state.get("grade_model", "gemini-2.5-flash")
+                    with st.spinner("Validating API Key with a sample request..."):
+                        is_valid, msg = validate_api_key(api_key_clean, model)
+                        if is_valid:
+                            st.session_state.api_key = api_key_clean
+                            st.session_state.api_key_validation = ("success", "✅ API Key validated successfully! (Connection active)")
+                        else:
+                            st.session_state.api_key_validation = ("error", f"❌ Validation failed: {msg}")
+                    st.rerun()
                 else:
-                    st.session_state.api_key = ""
-        else:
-            if is_env_valid:
-                st.session_state.api_key = env_key
+                    st.session_state.api_key_validation = ("error", "❌ Invalid key format (must be at least 10 chars, no spaces).")
+                    st.rerun()
+                    
+        # Display validation feedback
+        if st.session_state.api_key_validation:
+            status, msg = st.session_state.api_key_validation
+            if status == "success":
+                st.success(msg)
             else:
-                st.info("Optional: Set API Key for diagnostic AI grading. Otherwise, standard offline grading will be used.")
+                st.error(msg)
+        elif not st.session_state.api_key:
+            if is_env_valid:
+                st.info("Using Gemini API Key from environment.")
+            else:
+                st.info("Optional: Set API Key for AI grading. Otherwise, offline fallback will be used.")
             
         # Model Selection
         model_options = {

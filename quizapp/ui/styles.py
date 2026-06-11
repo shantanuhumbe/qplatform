@@ -220,6 +220,112 @@ div.stButton > button:active {
     border-left: 4px solid #EF4444;
     background-color: rgba(239, 68, 68, 0.05);
 }
+
+/* Premium overrides for Streamlit's native chat messages */
+[data-testid="stChatMessage"] {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+}
+
+[data-testid="stChatMessage"]:hover {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* User message specific style */
+[data-testid="stChatMessageUser"] {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(124, 58, 237, 0.08)) !important;
+    border: 1px solid rgba(124, 58, 237, 0.25) !important;
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.05) !important;
+}
+
+[data-testid="stChatMessageUser"]:hover {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(124, 58, 237, 0.12)) !important;
+    border-color: rgba(124, 58, 237, 0.35) !important;
+}
+
+/* Assistant message specific style */
+[data-testid="stChatMessageAssistant"] {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Hide Streamlit default avatar borders or improve them */
+[data-testid="stChatMessage"] [data-testid="stChatMessageAvatar"] {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Style chat forms to be borderless and clean */
+[data-testid="stForm"] {
+    border: none !important;
+    padding: 0 !important;
+    background-color: transparent !important;
+    margin-top: 15px !important;
+}
+
+/* Target buttons inside clear-chat-container */
+.clear-chat-container div.stButton > button {
+    background: rgba(239, 68, 68, 0.05) !important;
+    color: #EF4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.2) !important;
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    padding: 4px 10px !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    height: 32px !important;
+}
+
+.clear-chat-container div.stButton > button:hover {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: #EF4444 !important;
+    color: #F87171 !important;
+}
+
+/* Style chat send button to look integrated and premium */
+.chat-send-container button {
+    background: linear-gradient(135deg, #10B981, #059669) !important;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
+    border-radius: 8px !important;
+    width: 100% !important;
+    padding: 8px 16px !important;
+    font-size: 0.95rem !important;
+    border: none !important;
+    color: white !important;
+    transition: all 0.2s ease !important;
+}
+
+.chat-send-container button:hover {
+    background: linear-gradient(135deg, #059669, #047857) !important;
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4) !important;
+    transform: translateY(-1px);
+}
+
+/* Premium style for Apply & Verify Key button */
+.api-key-btn-container div.stButton > button {
+    background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: white !important;
+    transition: all 0.2s ease !important;
+}
+
+.api-key-btn-container div.stButton > button:hover {
+    background: linear-gradient(135deg, #7C3AED, #5B21B6) !important;
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.45) !important;
+    transform: translateY(-1px);
+}
 </style>
 """
 

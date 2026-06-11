@@ -308,37 +308,7 @@ def main():
                     st.markdown(f"**Correct Option Letter:** `{q.get('correct_answer', '')}`")
                     st.markdown(q.get("official_explanation", ""))
                     
-                # AI Tutor follow-up chat discussion
-                st.markdown("---")
-                st.markdown("<h4 style='font-family: \"Outfit\", sans-serif;'>💬 Discuss with Gemini Tutor</h4>", unsafe_allow_html=True)
-                chat_query = st.text_input(
-                    "Ask a question about this vignette, options, or grading:",
-                    placeholder="e.g. Can you explain the formula used in the official explanation?",
-                    key=f"tutor_chat_{q_key}"
-                )
-                
-                if chat_query:
-                    if not st.session_state.get("api_key"):
-                        st.warning("⚠️ Please provide a Gemini API Key in the sidebar settings to use the AI Tutor.")
-                    else:
-                        from quizapp.grader import explain_question_llm
-                        with st.spinner("Gemini is formulating an explanation..."):
-                            response = explain_question_llm(
-                                api_key=st.session_state.api_key,
-                                model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
-                                vignette_text=raw_case_text,
-                                question_text=q.get("question_text", ""),
-                                options=options,
-                                selected_option=user_ans,
-                                correct_option=q.get("correct_answer", ""),
-                                official_explanation=q.get("official_explanation", ""),
-                                user_query=chat_query
-                            )
-                            
-                            with st.chat_message("user"):
-                                st.markdown(chat_query)
-                            with st.chat_message("assistant"):
-                                st.markdown(response)
+
                     
             else:
                 # Question is unanswered: Render options radio and submit controls
@@ -542,6 +512,94 @@ def main():
                     del st.session_state.active_vignette_topic
                 st.session_state.question_index = 0
                 st.rerun()
+
+    # 6. Full-Width AI Tutor Chat at the bottom of the page (underneath columns)
+    if questions and active_q_idx < len(questions):
+        q_key = f"{active_vignette['topic']}::q_{active_q_idx}"
+        if q_key in progress["attempted_questions"]:
+            answer_data = progress["attempted_questions"][q_key]
+            user_ans = answer_data.get("user_answer", "")
+            q = questions[active_q_idx]
+            options = q.get("options", [])
+            raw_case_text = active_vignette.get("case_study_text", "")
+            
+            st.markdown("---")
+            
+            # Initialize chat history for this question key in session state
+            if "tutor_chats" not in st.session_state:
+                st.session_state.tutor_chats = {}
+            if q_key not in st.session_state.tutor_chats:
+                st.session_state.tutor_chats[q_key] = []
+            
+            chat_header_col1, chat_header_col2 = st.columns([6, 1])
+            with chat_header_col1:
+                st.markdown("<h4 style='font-family: \"Outfit\", sans-serif; margin: 0;'>💬 Discuss with Gemini Tutor</h4>", unsafe_allow_html=True)
+            with chat_header_col2:
+                if st.session_state.tutor_chats[q_key]:
+                    st.markdown('<div class="clear-chat-container">', unsafe_allow_html=True)
+                    if st.button("🗑️ Clear", key=f"clear_chat_{q_key}", use_container_width=True):
+                        st.session_state.tutor_chats[q_key] = []
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Render existing messages
+            if st.session_state.tutor_chats[q_key]:
+                for msg in st.session_state.tutor_chats[q_key]:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+            else:
+                # Beautiful empty state suggestion card
+                st.markdown(
+                    '<div class="feedback-box" style="border-left: 4px solid #8B5CF6; background-color: rgba(139, 92, 246, 0.03); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 15px;">'
+                    '<h5 style="margin-top: 0; color: #A78BFA; font-family: \'Outfit\', sans-serif;">💡 Ask the AI Tutor Anything</h5>'
+                    '<p style="font-size: 0.88em; opacity: 0.85; margin-bottom: 10px;">Get point-in-time clarification on this question, options, or curriculum logic. Try asking:</p>'
+                    '<ul style="font-size: 0.85em; opacity: 0.8; margin-left: 20px; line-height: 1.5; padding-left: 0;">'
+                    '<li><em>"Can you explain the step-by-step calculations?"</em></li>'
+                    '<li><em>"Why is my selected option incorrect in this context?"</em></li>'
+                    '<li><em>"What is the key difference between Option A and Option B?"</em></li>'
+                    '</ul>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            
+            # Form for user input with side-by-side layout
+            with st.form(key=f"chat_form_{q_key}", clear_on_submit=True):
+                input_col, btn_col = st.columns([10, 1])
+                with input_col:
+                    chat_query = st.text_input(
+                        label="Ask the AI Tutor:",
+                        label_visibility="collapsed",
+                        placeholder="Ask a question about this vignette, options, or grading...",
+                        key=f"tutor_input_val_{q_key}"
+                    )
+                with btn_col:
+                    st.markdown('<div class="chat-send-container">', unsafe_allow_html=True)
+                    submit_button = st.form_submit_button(label="🚀 Send")
+                    st.markdown('</div>', unsafe_allow_html=True)
+            
+            if submit_button and chat_query.strip():
+                if not st.session_state.get("api_key"):
+                    st.warning("⚠️ Please provide a Gemini API Key in the sidebar settings to use the AI Tutor.")
+                else:
+                    # Add user message to history
+                    st.session_state.tutor_chats[q_key].append({"role": "user", "content": chat_query.strip()})
+                    
+                    from quizapp.grader import explain_question_llm
+                    with st.spinner("Gemini is formulating an explanation..."):
+                        response = explain_question_llm(
+                            api_key=st.session_state.api_key,
+                            model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
+                            vignette_text=raw_case_text,
+                            question_text=q.get("question_text", ""),
+                            options=options,
+                            selected_option=user_ans,
+                            correct_option=q.get("correct_answer", ""),
+                            official_explanation=q.get("official_explanation", ""),
+                            user_query=chat_query.strip()
+                        )
+                    # Add assistant response to history
+                    st.session_state.tutor_chats[q_key].append({"role": "assistant", "content": response})
+                    st.rerun()
 
 if __name__ == "__main__":
     main()
