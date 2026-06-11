@@ -19,10 +19,15 @@ This repository features a pre-extracted quiz bank containing **233 vignettes** 
 
 ## 🚀 Key Features
 
-*   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or summarized text).
+*   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or scrambled text).
 *   **Dual Grading System**:
     *   *Dynamic AI Grading*: Powered by Google's Gemini API, providing granular, conceptual explanations of correct answers and diagnosing error categories (e.g. Calculation Error, Conceptual Gap, Formula Misuse).
     *   *Offline Local Fallback*: Automatically acts as a local fallback in case of rate-limiting, network issues, or daily quota limits, comparing selected choices against local answers instantly.
+*   **URL Parameter State Synchronization**: Pre-select and share the Question Bank (`q_bank`) and AI model (`model`) parameters directly through the browser URL query string (e.g. `?q_bank=merged&model=gemini-2.5-pro`) to ensure page load consistency.
+*   **Live API Key Validation**: A dedicated **Apply & Verify Key** sidebar button sends a lightweight sample request to the Gemini API and prints success or connection error messages instantly.
+*   **Full-Width Conversational AI Tutor**: 
+    *   An interactive, point-in-time chat widget spans the **full width** of the page at the bottom (underneath the parallel panels) for detailed, easy-to-read explanations.
+    *   Features a compact side-by-side **🚀 Send** input bar, conversational session history, quick suggestion prompts, and a **🗑️ Clear** chat action.
 *   **Interactive Sidebar Dashboard**: Real-time study statistics including percentage accuracy and live horizontal charts tracking conceptual weakness areas.
 *   **API Autofill Protection**: Robust input filters screen user API key inputs to block browser autofill pollution.
 *   **macOS SSL Bypass**: Out-of-the-box local SSL context resolution to avoid common connection failures on macOS environments.
