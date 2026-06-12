@@ -312,19 +312,27 @@ div.stButton > button:active {
 }
 
 /* Premium style for Apply & Verify Key button */
-.api-key-btn-container div.stButton > button {
+div.stFormSubmitButton > button {
     background: linear-gradient(135deg, #8B5CF6, #6D28D9) !important;
     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25) !important;
     border: none !important;
     border-radius: 8px !important;
     color: white !important;
     transition: all 0.2s ease !important;
+    width: 100% !important;
 }
 
-.api-key-btn-container div.stButton > button:hover {
+div.stFormSubmitButton > button:hover {
     background: linear-gradient(135deg, #7C3AED, #5B21B6) !important;
     box-shadow: 0 6px 16px rgba(139, 92, 246, 0.45) !important;
     transform: translateY(-1px);
+}
+
+/* Remove default border, background, and padding from sidebar form container */
+[data-testid="stSidebar"] [data-testid="stForm"] {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
 }
 </style>
 """

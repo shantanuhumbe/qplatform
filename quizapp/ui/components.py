@@ -50,23 +50,16 @@ def render_sidebar(progress, vignettes):
             
         curr_key = st.session_state.api_key
         
-        api_key_input = st.text_input("Gemini API Key", type="password", 
-                               value=curr_key,
-                               help="Optional. Used for dynamic AI grading and parsing new PDFs. Offline fallback grading is used if not provided.")
-        
-        # We process key change if user clicks button OR hits Enter (meaning input is different from saved session_state.api_key)
-        trigger_validation = False
-        st.markdown('<div class="api-key-btn-container">', unsafe_allow_html=True)
-        btn_clicked = st.button("Apply & Verify Key", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        if btn_clicked:
-            trigger_validation = True
-        elif api_key_input != curr_key:
-            # User changed input and hit Enter
-            trigger_validation = True
+        with st.form("api_key_form", clear_on_submit=False):
+            api_key_input = st.text_input(
+                "Gemini API Key", 
+                type="password", 
+                value=curr_key,
+                help="Optional. Used for dynamic AI grading and parsing new PDFs. Offline fallback grading is used if not provided."
+            )
+            btn_clicked = st.form_submit_button("Apply & Verify Key", use_container_width=True)
             
-        if trigger_validation:
+        if btn_clicked:
             api_key_clean = api_key_input.strip()
             if not api_key_clean:
                 st.session_state.api_key = ""
