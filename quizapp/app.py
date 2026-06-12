@@ -85,6 +85,11 @@ def main():
     # Sidebar rendering
     render_sidebar(progress, vignettes)
     
+    # Page Routing
+    if st.session_state.get("active_page", "Practice Quiz") == "AI Performance Diagnostic":
+        render_diagnostic_page(progress, vignettes)
+        return
+    
     if not vignettes:
         st.title("🎯 CFA Case Study Quiz Platform")
         st.warning("⚠️ Question Bank is currently empty.")
@@ -600,6 +605,143 @@ def main():
                     # Add assistant response to history
                     st.session_state.tutor_chats[q_key].append({"role": "assistant", "content": response})
                     st.rerun()
+
+def render_diagnostic_page(progress, vignettes):
+    import json
+    st.title("📊 AI Performance Diagnostic & Study Advisor")
+    st.write("Extract granular insights about your strengths and weaknesses from your curriculum practice history using Google's Gemini API.")
+    
+    st.markdown("---")
+    
+    # Selection of diagnostic target
+    diag_mode = st.radio(
+        "Select Performance Data Source",
+        ["Analyze Current Active Session", "Upload Saved Progress JSON File"],
+        horizontal=True
+    )
+    
+    selected_progress = None
+    
+    if diag_mode == "Analyze Current Active Session":
+        selected_progress = progress
+        st.info("Analyzing your current local session scores and history.")
+    else:
+        uploaded_file = st.file_uploader(
+            "Upload cfa_study_progress.json",
+            type=["json"],
+            help="Upload your saved progress JSON file to analyze."
+        )
+        if uploaded_file is not None:
+            try:
+                uploaded_data = json.load(uploaded_file)
+                required_keys = ["attempted_questions", "completed_vignettes", "score", "total_attempted", "statistics"]
+                if all(k in uploaded_data for k in required_keys):
+                    selected_progress = uploaded_data
+                    st.success("✅ Progress file loaded successfully!")
+                else:
+                    st.error("❌ Invalid file format: missing required progress keys.")
+            except Exception as e:
+                st.error(f"❌ Error parsing progress file: {e}")
+        else:
+            st.info("Please upload a saved progress JSON file to begin analysis.")
+            return
+
+    if not selected_progress:
+        return
+        
+    attempted_questions = selected_progress.get("attempted_questions", {})
+    total_attempted = len(attempted_questions)
+    
+    if total_attempted == 0:
+        st.warning("⚠️ No practice history found in this session. Go attempt some quiz questions first!")
+        return
+        
+    correct_count = sum(1 for q in attempted_questions.values() if q.get("is_correct", False))
+    incorrect_count = total_attempted - correct_count
+    accuracy = (correct_count / total_attempted * 100) if total_attempted > 0 else 0.0
+    
+    # Render stats grid
+    st.markdown("### 📈 Session Summary Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Questions Attempted", total_attempted)
+    with col2:
+        st.metric("Accuracy Rate", f"{accuracy:.1f}%")
+    with col3:
+        st.metric("Correct Answers", correct_count)
+    with col4:
+        st.metric("Incorrect Answers", incorrect_count)
+        
+    # Render error category counts
+    st.markdown("---")
+    
+    categories = {}
+    for q in attempted_questions.values():
+        if not q.get("is_correct", True):
+            cat = q.get("feedback", {}).get("error_category", "Unclassified")
+            categories[cat] = categories.get(cat, 0) + 1
+            
+    col_left, col_right = st.columns([1, 2])
+    with col_left:
+        st.markdown("#### 🔍 Error Category Frequencies")
+        if categories:
+            for cat, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
+                st.write(f"- **{cat}**: {count} errors")
+        else:
+            st.success("🎉 Excellent! Zero incorrect questions found in this session.")
+            
+    with col_right:
+        st.markdown("#### ⚙️ Generate AI Diagnostic Report")
+        st.write("Generates a structured review document analyzing your specific weakness areas, formula mistakes, and conceptual gaps using the Gemini API.")
+        
+        api_key_set = bool(st.session_state.get("api_key"))
+        if not api_key_set:
+            st.warning("⚠️ Please provide and verify a Gemini API Key in the sidebar settings to generate the diagnostic report.")
+            
+        btn_diag = st.button(
+            "Generate AI Diagnostic Report", 
+            use_container_width=True, 
+            disabled=(incorrect_count == 0 or not api_key_set),
+            type="primary"
+        )
+        
+        if btn_diag:
+            from quizapp.utils.diagnostic import prepare_incorrect_questions_summary
+            from quizapp.grader import generate_diagnostic_report
+            
+            incorrect_summary = prepare_incorrect_questions_summary(selected_progress, vignettes)
+            
+            if not incorrect_summary:
+                st.error("Could not find matching question bank data for your incorrect attempts.")
+            else:
+                with st.spinner("Analyzing question rationales, tracking syllabus weak points, and drafting recommendations..."):
+                    report_text = generate_diagnostic_report(
+                        api_key=st.session_state.api_key,
+                        model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
+                        incorrect_questions_summary=incorrect_summary
+                    )
+                    st.session_state.diagnostic_report = report_text
+                    st.success("✅ Diagnostic report generated successfully!")
+
+    # Display generated report
+    if st.session_state.get("diagnostic_report"):
+        st.markdown("---")
+        st.markdown("### 📋 AI Diagnostic Report & Study Plan")
+        
+        st.markdown(
+            f'<div class="glass-card" style="padding: 30px; border-radius: 12px; margin-bottom: 20px;">',
+            unsafe_allow_html=True
+        )
+        st.markdown(st.session_state.diagnostic_report)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.download_button(
+            label="📥 Download Diagnostic Report (.md)",
+            data=st.session_state.diagnostic_report,
+            file_name="cfa_performance_diagnostic_report.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     main()

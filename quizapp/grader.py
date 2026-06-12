@@ -201,3 +201,88 @@ def validate_api_key(api_key, model="gemini-2.5-flash"):
         return False, f"API Error: {err_msg}"
     except Exception as e:
         return False, f"Connection Error: {e}"
+
+def generate_diagnostic_report(api_key, model, incorrect_questions_summary):
+    """Calls the Gemini API to compile an in-depth study diagnostic based on incorrect questions."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    prompt = (
+        "You are an elite Chartered Financial Analyst (CFA) tutor and study advisor.\n"
+        "Your task is to analyze the student's practice history and build a granular performance diagnostic report.\n\n"
+        "Here is a list of practice questions the student answered incorrectly, along with their selected answers, correct answers, "
+        "their typed explanations (if any), official rationales, and the diagnostic error category assigned by the automated grader:\n\n"
+    )
+    
+    for idx, item in enumerate(incorrect_questions_summary):
+        prompt += (
+            f"--- Entry {idx+1} ---\n"
+            f"Learning Module: {item['module']}\n"
+            f"Vignette Topic: {item['vignette_topic']}\n"
+            f"Question: {item['question_text']}\n"
+            f"Choices:\n" + "\n".join(f"  - {opt}" for opt in item['options']) + "\n"
+            f"Student Selected: {item['user_answer']}\n"
+            f"Correct Answer: {item['correct_answer']}\n"
+            f"Official Explanation: {item['official_explanation']}\n"
+            f"Student Reasoning: {item['user_explanation'] if item['user_explanation'].strip() else 'No explanation written.'}\n"
+            f"Grader Error Category: {item['grader_error_category']}\n"
+            f"Grader Feedback: {item['grader_feedback']}\n\n"
+        )
+        
+    prompt += (
+        "Based on these entries, generate a highly detailed and actionable diagnostic report in Markdown format. The report MUST include the following sections:\n\n"
+        "### 📈 Executive Summary\n"
+        "Provide a high-level overview of the student's current performance (e.g. key areas of concern, most common error categories).\n\n"
+        "### 🔍 Detailed Weakness Diagnosis (Granular Level)\n"
+        "Analyze the conceptual patterns behind the incorrect answers. Group by specific CFA curriculum modules/topics, and explain:\n"
+        "- What specific theoretical bits, formulas, or concepts the student is struggling with (e.g. calculation of FCFF starting from Net Income vs EBIT, or spot rate replication in arbitrage-free valuation).\n"
+        "- The nature of their errors (e.g. pattern of 'Formula Misuse' vs 'Conceptual Gaps' or 'Calculation Errors').\n\n"
+        "### 📚 Critical Focus Areas (Review Guide)\n"
+        "Provide a clear, brief review explanation of the core concepts the student got wrong, helping them re-learn the material immediately. Use LaTeX formatting for all formulas (e.g., $$ ... $$ for block formulas, $ ... $ for inline variables).\n\n"
+        "### 📋 Actionable Study Plan\n"
+        "Provide a concrete, step-by-step study schedule or set of actions the student should take to address these gaps (e.g., specific practice focus, reading modules, note-taking strategies).\n\n"
+        "FORMATTING INSTRUCTIONS:\n"
+        "- Use standard Markdown syntax with clear headings, subheadings, lists, and tables where helpful.\n"
+        "- Format all equations using LaTeX double dollar signs ($$ ... $$) on their own lines for block formulas, and single dollar signs ($ ... $) for inline expressions. Ensure spaces are placed around all math operators (e.g., +, -, *, =, x).\n"
+        "- Do NOT wrap LaTeX math blocks inside markdown bold (**) or italics (*).\n"
+        "- Keep paragraphs cleanly separated with line breaks."
+    )
+    
+    request_data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    req_body = json.dumps(request_data).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            res_data = response.read().decode("utf-8")
+            res_json = json.loads(res_data)
+            
+            candidates = res_json.get("candidates", [])
+            if not candidates:
+                return "Gemini returned no candidates in response."
+                
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                return "Gemini returned empty content parts."
+                
+            return parts[0].get("text", "")
+            
+    except urllib.error.HTTPError as e:
+        try:
+            error_msg = e.read().decode("utf-8")
+        except:
+            error_msg = ""
+        return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
+    except Exception as e:
+        return f"Error: {e}"

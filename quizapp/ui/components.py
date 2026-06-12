@@ -10,6 +10,24 @@ def render_sidebar(progress, vignettes):
         st.markdown("<h2 style='text-align: center; color: #3B82F6;'>🎯 Study Dashboard</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
+        # Page Navigation
+        st.subheader("📂 Navigation")
+        if "active_page" not in st.session_state:
+            st.session_state.active_page = "Practice Quiz"
+            
+        active_page = st.selectbox(
+            "Select Page View",
+            options=["Practice Quiz", "AI Performance Diagnostic"],
+            index=0 if st.session_state.active_page == "Practice Quiz" else 1,
+            key="page_navigation_selectbox",
+            help="Switch between the practice questions workspace and the AI performance analyzer."
+        )
+        if active_page != st.session_state.active_page:
+            st.session_state.active_page = active_page
+            st.rerun()
+            
+        st.markdown("---")
+        
         # 0. Question Bank Selector
         st.subheader("📚 Question Bank")
         active_db = st.session_state.get("active_db", "default")
