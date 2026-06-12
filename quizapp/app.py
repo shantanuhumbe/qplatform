@@ -672,6 +672,114 @@ def render_diagnostic_page(progress, vignettes):
     with col4:
         st.metric("Incorrect Answers", incorrect_count)
         
+    # CFA Level II Exam Predictor & Passing Gauge
+    st.markdown("---")
+    st.markdown("### 🎯 CFA Level II Exam Simulator & Score Predictor")
+    
+    pred_col_left, pred_col_right = st.columns([1, 1])
+    
+    # Calculate predicted score range using standard error of a proportion
+    import math
+    p = accuracy / 100.0
+    n = total_attempted
+    # Capped margin of error between 2% and 25% based on sample size
+    stderr = math.sqrt(max(0.01, p * (1 - p)) / n)
+    margin_fallback = max(2.0, min(25.0, 1.96 * stderr * 100.0))
+    
+    # Check if we have active AI-generated prediction
+    has_ai_prediction = "predicted_score" in st.session_state
+    gauge_value = st.session_state.get("predicted_score", accuracy)
+    gauge_margin = st.session_state.get("confidence_margin", margin_fallback)
+    
+    predicted_min = max(0.0, gauge_value - gauge_margin)
+    predicted_max = min(100.0, gauge_value + gauge_margin)
+    
+    # Determine Status Verdict
+    mps = 65.0
+    if predicted_min >= mps:
+        verdict_status = "🎉 PASS PREDICTED"
+        verdict_desc = "AI High Confidence Pass" if has_ai_prediction else "Baseline High Confidence Pass"
+        verdict_color = "#10B981" # Green
+        verdict_bg = "rgba(16, 185, 129, 0.08)"
+        verdict_border = "1px solid #10B981"
+        verdict_tip = "Your performance is safely above the historical Minimum Passing Score (MPS). The AI evaluates your logic as highly solid and structured for the CFA L2 syllabus." if has_ai_prediction else "Your cumulative accuracy is safely above the historical Minimum Passing Score (MPS). Keep practicing to narrow down the margin of error."
+    elif gauge_value >= mps:
+        verdict_status = "⚠️ BORDERLINE PASS"
+        verdict_desc = "AI Moderate Confidence" if has_ai_prediction else "Baseline Moderate Confidence"
+        verdict_color = "#F59E0B" # Amber
+        verdict_bg = "rgba(245, 158, 11, 0.08)"
+        verdict_border = "1px solid #F59E0B"
+        verdict_tip = "Your predicted average is passing, but your score confidence interval dips below the MPS. AI warns that errors in high-weight topics could jeopardize your outcome." if has_ai_prediction else "Your average is passing, but your score confidence interval dips below the MPS due to sample size or performance fluctuations."
+    elif predicted_max >= mps:
+        verdict_status = "⚠️ BORDERLINE FAIL"
+        verdict_desc = "AI Low Confidence" if has_ai_prediction else "Baseline Low Confidence"
+        verdict_color = "#F59E0B" # Amber
+        verdict_bg = "rgba(245, 158, 11, 0.08)"
+        verdict_border = "1px solid #F59E0B"
+        verdict_tip = "You are close to the passing threshold. The AI notes specific conceptual gaps in key formula sections that are holding you back." if has_ai_prediction else "You are close to the passing threshold, but currently tracking below the MPS. Standardizing your formulas and reviewing Conceptual Gaps will quickly push you into passing range."
+    else:
+        verdict_status = "🚨 FAIL PREDICTED"
+        verdict_desc = "AI Requires Immediate Review" if has_ai_prediction else "Baseline Low Score"
+        verdict_color = "#EF4444" # Red
+        verdict_bg = "rgba(239, 68, 68, 0.08)"
+        verdict_border = "1px solid #EF4444"
+        verdict_tip = "Your performance is currently below the historical passing threshold. The AI advises dedicated syllabus review on your Critical Focus subjects before attempting mock exams." if has_ai_prediction else "Your performance is currently below the historical passing threshold. We recommend focusing heavily on your top Critical Focus subject areas and generating an AI study advisor report."
+        
+    with pred_col_left:
+        import plotly.graph_objects as go
+        
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number+delta",
+            value = gauge_value,
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            delta = {'reference': mps, 'position': "top", 'valueformat': '.1f', 'increasing': {'color': "#10B981"}, 'decreasing': {'color': "#EF4444"}},
+            gauge = {
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#94A3B8"},
+                'bar': {'color': "#3B82F6"},
+                'bgcolor': "rgba(255, 255, 255, 0.02)",
+                'borderwidth': 1,
+                'bordercolor': "rgba(255, 255, 255, 0.1)",
+                'steps': [
+                    {'range': [0, 60], 'color': 'rgba(239, 68, 68, 0.08)'},
+                    {'range': [60, 65], 'color': 'rgba(245, 158, 11, 0.08)'},
+                    {'range': [65, 100], 'color': 'rgba(16, 185, 129, 0.06)'}
+                ],
+                'threshold': {
+                    'line': {'color': "#F59E0B", 'width': 3},
+                    'thickness': 0.75,
+                    'value': mps
+                }
+            }
+        ))
+        
+        fig_gauge.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font={'color': "#F1F5F9", 'family': "Inter"},
+            height=200,
+            margin=dict(l=30, r=30, t=10, b=10)
+        )
+        st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
+        
+    with pred_col_right:
+        st.markdown(
+            f'<div class="glass-card" style="border-left: 5px solid {verdict_color}; background-color: {verdict_bg}; '
+            f'border-top: {verdict_border}; border-right: {verdict_border}; border-bottom: {verdict_border}; '
+            f'padding: 16px 20px; border-radius: 12px; margin-top: 10px; height: 100%;">'
+            f'<h4 style="margin: 0; color: {verdict_color}; font-size: 1.1em; letter-spacing: 0.05em;">{verdict_status} ({verdict_desc})</h4>'
+            f'<p style="margin: 8px 0 4px 0; font-size: 0.95em; font-weight: 600; color: #E2E8F0;">'
+            f'Predicted Score Range: <strong>{predicted_min:.1f}% to {predicted_max:.1f}%</strong>'
+            f'</p>'
+            f'<p style="margin: 0 0 8px 0; font-size: 0.8em; color: #94A3B8;">'
+            f'Confidence Interval (95% CI): ±{gauge_margin:.1f}% based on {n} attempts'
+            f'</p>'
+            f'<p style="margin: 0; font-size: 0.85em; line-height: 1.5; color: #CBD5E1;">'
+            f'{verdict_tip}'
+            f'</p>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        
     # Calculate subject level metrics
     from quizapp.utils.diagnostic import calculate_subject_metrics
     subject_stats = calculate_subject_metrics(selected_progress, vignettes)
@@ -845,14 +953,17 @@ def render_diagnostic_page(progress, vignettes):
                 st.error("Could not find matching question bank data for your incorrect attempts.")
             else:
                 with st.spinner("Analyzing syllabus weak points, compiling accuracy rankings, and drafting exam readiness verdict..."):
-                    report_text = generate_diagnostic_report(
+                    res = generate_diagnostic_report(
                         api_key=st.session_state.api_key,
                         model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
                         incorrect_questions_summary=incorrect_summary,
                         subject_metrics=subject_stats
                     )
-                    st.session_state.diagnostic_report = report_text
+                    st.session_state.diagnostic_report = res.get("report_markdown", "")
+                    st.session_state.predicted_score = res.get("predicted_score", accuracy)
+                    st.session_state.confidence_margin = res.get("confidence_margin", margin_fallback)
                     st.success("✅ Diagnostic report generated successfully!")
+                    st.rerun()
 
     # Display generated report
     if st.session_state.get("diagnostic_report"):

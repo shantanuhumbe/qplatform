@@ -239,7 +239,7 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subj
         )
         
     prompt += (
-        "Based on this data, generate a highly detailed and actionable diagnostic report in Markdown format. The report MUST include the following sections:\n\n"
+        "Based on this data, generate a highly detailed and actionable diagnostic report. The report MUST include the following sections:\n\n"
         "### 📈 Executive Summary & Subject Overview\n"
         "Provide a high-level overview of the student's performance. Clearly state which subjects/modules the student is performing well in (high accuracy) versus which subjects/modules they are performing poorly in (low accuracy, frequent errors).\n\n"
         "### 🎯 Ranked Focus Areas (Descending Order of Urgency)\n"
@@ -254,12 +254,24 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subj
         "Provide a concrete verdict on the student's readiness for the CFA Level II Exam (e.g. READY, BORDERLINE, or NOT READY YET). Back up your verdict with insights from their accuracy rates, types of errors made, and suggest specific mock exam targets or performance benchmarks they need to hit next.\n\n"
         "### 📋 Actionable Study Plan\n"
         "Provide a concrete, step-by-step study schedule or set of actions the student should take to address these gaps (e.g., specific practice focus, reading modules, note-taking strategies).\n\n"
-        "FORMATTING INSTRUCTIONS:\n"
-        "- Use standard Markdown syntax with clear headings, subheadings, lists, and tables where helpful.\n"
-        "- Format all equations using LaTeX double dollar signs ($$ ... $$) on their own lines for block formulas, and single dollar signs ($ ... $) for inline expressions. Ensure spaces are placed around all math operators (e.g., +, -, *, =, x).\n"
-        "- Do NOT wrap LaTeX math blocks inside markdown bold (**) or italics (*).\n"
-        "- Keep paragraphs cleanly separated with line breaks."
+        "FORMATTING & OUTPUT INSTRUCTIONS:\n"
+        "- You must format your final response as a JSON object matching the requested schema.\n"
+        "- In `report_markdown`: write your complete study diagnostic markdown report using clear headings, subheadings, lists, and tables.\n"
+        "- In `predicted_score`: output a float value between 0.0 and 100.0 representing your estimated equivalent score for the student on a full-length mock exam. Perform a holistic weighting of their subject performance, penalize for gaps in high-weight topics, and adjust for sample size.\n"
+        "- In `confidence_margin`: output a float value between 2.0 and 20.0 indicating your statistical margin of error or uncertainty about this score based on the count of active attempts (more attempts = lower margin).\n"
+        "- For math equations in `report_markdown`, use LaTeX double dollar signs ($$ ... $$) on their own lines for block formulas, and single dollar signs ($ ... $) for inline expressions. Ensure spaces are placed around all math operators (e.g., +, -, *, =, x)."
     )
+    
+    # Structured response schema for diagnostic report
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "report_markdown": {"type": "STRING"},
+            "predicted_score": {"type": "NUMBER"},
+            "confidence_margin": {"type": "NUMBER"}
+        },
+        "required": ["report_markdown", "predicted_score", "confidence_margin"]
+    }
     
     request_data = {
         "contents": [
@@ -268,7 +280,11 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subj
                     {"text": prompt}
                 ]
             }
-        ]
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": schema
+        }
     }
     
     headers = {"Content-Type": "application/json"}
@@ -284,22 +300,47 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subj
             
             candidates = res_json.get("candidates", [])
             if not candidates:
-                return "Gemini returned no candidates in response."
+                return {
+                    "report_markdown": "Error: Gemini returned no candidates in response.",
+                    "predicted_score": 0.0,
+                    "confidence_margin": 15.0
+                }
                 
             parts = candidates[0].get("content", {}).get("parts", [])
             if not parts:
-                return "Gemini returned empty content parts."
+                return {
+                    "report_markdown": "Error: Gemini returned empty content parts.",
+                    "predicted_score": 0.0,
+                    "confidence_margin": 15.0
+                }
                 
-            return parts[0].get("text", "")
+            raw_text = parts[0].get("text", "")
+            try:
+                output_data = json.loads(raw_text)
+                return output_data
+            except Exception as parse_err:
+                return {
+                    "report_markdown": raw_text,
+                    "predicted_score": 0.0,
+                    "confidence_margin": 15.0
+                }
             
     except urllib.error.HTTPError as e:
         try:
             error_msg = e.read().decode("utf-8")
         except:
             error_msg = ""
-        return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
+        return {
+            "report_markdown": f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}",
+            "predicted_score": 0.0,
+            "confidence_margin": 15.0
+        }
     except Exception as e:
-        return f"Error: {e}"
+        return {
+            "report_markdown": f"Error: {e}",
+            "predicted_score": 0.0,
+            "confidence_margin": 15.0
+        }
 
 def discuss_diagnostic_llm(api_key, model, subject_metrics, incorrect_questions_summary, diagnostic_report, chat_history, user_query):
     """Sends the diagnostic report and user study query to Gemini to act as a study coach."""
