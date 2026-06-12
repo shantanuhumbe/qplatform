@@ -202,13 +202,23 @@ def validate_api_key(api_key, model="gemini-2.5-flash"):
     except Exception as e:
         return False, f"Connection Error: {e}"
 
-def generate_diagnostic_report(api_key, model, incorrect_questions_summary):
-    """Calls the Gemini API to compile an in-depth study diagnostic based on incorrect questions."""
+def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subject_metrics=None):
+    """Calls the Gemini API to compile an in-depth study diagnostic based on incorrect questions and subject metrics."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     
     prompt = (
         "You are an elite Chartered Financial Analyst (CFA) tutor and study advisor.\n"
         "Your task is to analyze the student's practice history and build a granular performance diagnostic report.\n\n"
+    )
+    
+    if subject_metrics:
+        prompt += "Here is the student's cumulative performance metrics by CFA learning module / subject area:\n"
+        for subject, stats in subject_metrics.items():
+            err_cats_str = ", ".join(f"{k} ({v} times)" for k, v in stats['error_categories'].items()) if stats['error_categories'] else "None"
+            prompt += f"- **{subject}**: {stats['correct']}/{stats['attempted']} correct ({stats['accuracy']:.1f}% accuracy). Common error categories: {err_cats_str}\n"
+        prompt += "\n"
+        
+    prompt += (
         "Here is a list of practice questions the student answered incorrectly, along with their selected answers, correct answers, "
         "their typed explanations (if any), official rationales, and the diagnostic error category assigned by the automated grader:\n\n"
     )
@@ -229,15 +239,19 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary):
         )
         
     prompt += (
-        "Based on these entries, generate a highly detailed and actionable diagnostic report in Markdown format. The report MUST include the following sections:\n\n"
-        "### 📈 Executive Summary\n"
-        "Provide a high-level overview of the student's current performance (e.g. key areas of concern, most common error categories).\n\n"
+        "Based on this data, generate a highly detailed and actionable diagnostic report in Markdown format. The report MUST include the following sections:\n\n"
+        "### 📈 Executive Summary & Subject Overview\n"
+        "Provide a high-level overview of the student's performance. Clearly state which subjects/modules the student is performing well in (high accuracy) versus which subjects/modules they are performing poorly in (low accuracy, frequent errors).\n\n"
+        "### 🎯 Ranked Focus Areas (Descending Order of Urgency)\n"
+        "Provide a ranked list of specific weakness topics to focus on, ordered from most critical (highest count of incorrect questions / conceptual misunderstandings) to least critical.\n\n"
         "### 🔍 Detailed Weakness Diagnosis (Granular Level)\n"
         "Analyze the conceptual patterns behind the incorrect answers. Group by specific CFA curriculum modules/topics, and explain:\n"
         "- What specific theoretical bits, formulas, or concepts the student is struggling with (e.g. calculation of FCFF starting from Net Income vs EBIT, or spot rate replication in arbitrage-free valuation).\n"
         "- The nature of their errors (e.g. pattern of 'Formula Misuse' vs 'Conceptual Gaps' or 'Calculation Errors').\n\n"
         "### 📚 Critical Focus Areas (Review Guide)\n"
         "Provide a clear, brief review explanation of the core concepts the student got wrong, helping them re-learn the material immediately. Use LaTeX formatting for all formulas (e.g., $$ ... $$ for block formulas, $ ... $ for inline variables).\n\n"
+        "### 🎓 CFA Level II Exam Readiness Verdict\n"
+        "Provide a concrete verdict on the student's readiness for the CFA Level II Exam (e.g. READY, BORDERLINE, or NOT READY YET). Back up your verdict with insights from their accuracy rates, types of errors made, and suggest specific mock exam targets or performance benchmarks they need to hit next.\n\n"
         "### 📋 Actionable Study Plan\n"
         "Provide a concrete, step-by-step study schedule or set of actions the student should take to address these gaps (e.g., specific practice focus, reading modules, note-taking strategies).\n\n"
         "FORMATTING INSTRUCTIONS:\n"

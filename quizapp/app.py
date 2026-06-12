@@ -672,17 +672,131 @@ def render_diagnostic_page(progress, vignettes):
     with col4:
         st.metric("Incorrect Answers", incorrect_count)
         
-    # Render error category counts
+    # Calculate subject level metrics
+    from quizapp.utils.diagnostic import calculate_subject_metrics
+    subject_stats = calculate_subject_metrics(selected_progress, vignettes)
+    
+    st.markdown("---")
+    st.markdown("### 🔍 Subject Performance & Focus Priorities")
+    
+    col_chart, col_rank = st.columns([5, 4])
+    
+    with col_chart:
+        st.markdown("#### 📊 Subject Accuracy & Error Volume")
+        if subject_stats:
+            import pandas as pd
+            import plotly.express as px
+            
+            # Build data list
+            chart_data = []
+            for sub, stats in subject_stats.items():
+                chart_data.append({
+                    "Subject Area": sub,
+                    "Accuracy (%)": round(stats["accuracy"], 1),
+                    "Errors": stats["incorrect"],
+                    "Attempted": stats["attempted"]
+                })
+            
+            df_subject = pd.DataFrame(chart_data)
+            # Sort by Errors ascending so when plotted horizontally, largest errors is at the top
+            df_subject = df_subject.sort_values(by="Errors", ascending=True)
+            
+            fig = px.bar(
+                df_subject,
+                x="Errors",
+                y="Subject Area",
+                orientation='h',
+                text="Accuracy (%)",
+                color="Accuracy (%)",
+                color_continuous_scale="RdYlGn",
+                hover_data=["Attempted", "Errors"],
+                template="plotly_dark"
+            )
+            
+            fig.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=max(180, 50 * len(chart_data)),
+                xaxis_title="Number of Incorrect Attempts (Error Count)",
+                yaxis_title=None,
+                coloraxis_colorbar=dict(title="Accuracy %")
+            )
+            fig.update_traces(
+                texttemplate='%{text}% Acc',
+                textposition='inside',
+                insidetextanchor='end'
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        else:
+            st.info("No subject metrics available. Please practice some questions first.")
+            
+    with col_rank:
+        st.markdown("#### 🎯 Priority Ranking (Weakest Subjects first)")
+        if subject_stats:
+            # Sort subjects descending by incorrect count (errors)
+            sorted_subjects = sorted(subject_stats.items(), key=lambda x: x[1]["incorrect"], reverse=True)
+            # Filter to only subjects with attempted questions
+            sorted_subjects = [s for s in sorted_subjects if s[1]["attempted"] > 0]
+            
+            for rank_idx, (subject, stats) in enumerate(sorted_subjects):
+                errors = stats["incorrect"]
+                accuracy = stats["accuracy"]
+                attempted = stats["attempted"]
+                
+                # Determine tag styling and text
+                if errors > 0:
+                    if rank_idx == 0:
+                        tag_color = "#EF4444" # Red
+                        tag_bg = "rgba(239, 68, 68, 0.15)"
+                        tag_border = "1px solid #EF4444"
+                        priority_tag = "🔴 CRITICAL FOCUS"
+                    elif rank_idx == 1:
+                        tag_color = "#F59E0B" # Amber
+                        tag_bg = "rgba(245, 158, 11, 0.15)"
+                        tag_border = "1px solid #F59E0B"
+                        priority_tag = "🟡 HIGH PRIORITY"
+                    else:
+                        tag_color = "#3B82F6" # Blue
+                        tag_bg = "rgba(59, 130, 246, 0.15)"
+                        tag_border = "1px solid #3B82F6"
+                        priority_tag = "🔵 REVIEW FOCUS"
+                else:
+                    tag_color = "#10B981" # Green
+                    tag_bg = "rgba(16, 185, 129, 0.15)"
+                    tag_border = "1px solid #10B981"
+                    priority_tag = "🟢 MASTERY STABLE"
+                    
+                st.markdown(
+                    f'<div style="background-color: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); '
+                    f'padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; display: flex; '
+                    f'justify-content: space-between; align-items: center;">'
+                    f'<div>'
+                    f'<h5 style="margin: 0; font-size: 0.95em; color: #E2E8F0;">Rank {rank_idx+1}: {subject}</h5>'
+                    f'<p style="margin: 4px 0 0 0; font-size: 0.8em; color: #94A3B8;">'
+                    f'Score: {stats["correct"]}/{attempted} | Accuracy: {accuracy:.1f}%'
+                    f'</p>'
+                    f'</div>'
+                    f'<span style="color: {tag_color}; background-color: {tag_bg}; border: {tag_border}; '
+                    f'padding: 4px 8px; border-radius: 6px; font-size: 0.75em; font-weight: 600; '
+                    f'letter-spacing: 0.05em; display: inline-block;">'
+                    f'{priority_tag}'
+                    f'</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+        else:
+            st.info("Rankings will populate once you attempt questions.")
+            
     st.markdown("---")
     
+    # Render error category counts
     categories = {}
     for q in attempted_questions.values():
         if not q.get("is_correct", True):
             cat = q.get("feedback", {}).get("error_category", "Unclassified")
             categories[cat] = categories.get(cat, 0) + 1
             
-    col_left, col_right = st.columns([1, 2])
-    with col_left:
+    col_err_left, col_err_right = st.columns([1, 1])
+    with col_err_left:
         st.markdown("#### 🔍 Error Category Frequencies")
         if categories:
             for cat, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
@@ -690,9 +804,9 @@ def render_diagnostic_page(progress, vignettes):
         else:
             st.success("🎉 Excellent! Zero incorrect questions found in this session.")
             
-    with col_right:
+    with col_err_right:
         st.markdown("#### ⚙️ Generate AI Diagnostic Report")
-        st.write("Generates a structured review document analyzing your specific weakness areas, formula mistakes, and conceptual gaps using the Gemini API.")
+        st.write("Generates an advanced study review document including subject overview analysis, focus priority lists, and a **CFA Level II Readiness Verdict**.")
         
         api_key_set = bool(st.session_state.get("api_key"))
         if not api_key_set:
@@ -714,11 +828,12 @@ def render_diagnostic_page(progress, vignettes):
             if not incorrect_summary:
                 st.error("Could not find matching question bank data for your incorrect attempts.")
             else:
-                with st.spinner("Analyzing question rationales, tracking syllabus weak points, and drafting recommendations..."):
+                with st.spinner("Analyzing syllabus weak points, compiling accuracy rankings, and drafting exam readiness verdict..."):
                     report_text = generate_diagnostic_report(
                         api_key=st.session_state.api_key,
                         model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
-                        incorrect_questions_summary=incorrect_summary
+                        incorrect_questions_summary=incorrect_summary,
+                        subject_metrics=subject_stats
                     )
                     st.session_state.diagnostic_report = report_text
                     st.success("✅ Diagnostic report generated successfully!")
