@@ -6,7 +6,7 @@ CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap');
 
 /* Apply general fonts and layout styling */
-html, body, [class*="css"] {
+html, body {
     font-family: 'Inter', sans-serif;
     color: #F1F5F9;
 }
