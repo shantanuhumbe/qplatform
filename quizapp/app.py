@@ -855,6 +855,7 @@ def render_diagnostic_page(progress, vignettes):
             # Filter to only subjects with attempted questions
             sorted_subjects = [s for s in sorted_subjects if s[1]["attempted"] > 0]
             
+            cards_html = []
             for rank_idx, (subject, stats) in enumerate(sorted_subjects):
                 errors = stats["incorrect"]
                 accuracy = stats["accuracy"]
@@ -888,8 +889,8 @@ def render_diagnostic_page(progress, vignettes):
                         tag_bg = "rgba(110, 231, 183, 0.1)"
                         tag_border = "1px solid rgba(110, 231, 183, 0.3)"
                         priority_tag = "🟢 PASSING (Low Data)"
-                    
-                st.markdown(
+                        
+                cards_html.append(
                     f'<div style="background-color: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); '
                     f'padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; display: flex; '
                     f'justify-content: space-between; align-items: center;">'
@@ -904,9 +905,18 @@ def render_diagnostic_page(progress, vignettes):
                     f'letter-spacing: 0.05em; display: inline-block;">'
                     f'{priority_tag}'
                     f'</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
+                    f'</div>'
                 )
+            
+            # Render scrollable container with customized scrollbar
+            # Set a dynamic height matching the chart layout (approx 380px max height)
+            scrollable_wrapper = (
+                f'<div style="max-height: 380px; overflow-y: auto; padding-right: 8px; '
+                f'display: flex; flex-direction: column; gap: 2px;">'
+                f'{"".join(cards_html)}'
+                f'</div>'
+            )
+            st.markdown(scrollable_wrapper, unsafe_allow_html=True)
         else:
             st.info("Rankings will populate once you attempt questions.")
             
