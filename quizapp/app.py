@@ -821,9 +821,14 @@ def render_diagnostic_page(progress, vignettes):
                 template="plotly_dark"
             )
             
+            num_items = len(chart_data)
+            chart_item_height = 50
+            chart_padding = 80
+            fig_height = max(180, chart_item_height * num_items + chart_padding)
+            
             fig.update_layout(
                 margin=dict(l=10, r=10, t=10, b=10),
-                height=max(180, 50 * len(chart_data)),
+                height=fig_height,
                 xaxis_title="Number of Incorrect Attempts (Error Count)",
                 yaxis_title=None,
                 coloraxis_colorbar=dict(title="Accuracy %")
@@ -833,7 +838,14 @@ def render_diagnostic_page(progress, vignettes):
                 textposition='inside',
                 insidetextanchor='end'
             )
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            
+            # Keep 10 items visible, make remaining scrollable
+            if num_items > 10:
+                container_height = chart_item_height * 10 + chart_padding
+                with st.container(height=container_height, border=False):
+                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            else:
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         else:
             st.info("No subject metrics available. Please practice some questions first.")
             
@@ -909,9 +921,9 @@ def render_diagnostic_page(progress, vignettes):
                 )
             
             # Render scrollable container with customized scrollbar
-            # Set a dynamic height matching the chart layout (approx 380px max height)
+            # Keep 10 items visible (card height is ~58px, so max-height is set to 580px) and make remaining scrollable
             scrollable_wrapper = (
-                f'<div style="max-height: 380px; overflow-y: auto; padding-right: 8px; '
+                f'<div style="max-height: 580px; overflow-y: auto; padding-right: 8px; '
                 f'display: flex; flex-direction: column; gap: 2px;">'
                 f'{"".join(cards_html)}'
                 f'</div>'
