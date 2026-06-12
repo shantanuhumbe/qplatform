@@ -300,3 +300,74 @@ def generate_diagnostic_report(api_key, model, incorrect_questions_summary, subj
         return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
     except Exception as e:
         return f"Error: {e}"
+
+def discuss_diagnostic_llm(api_key, model, subject_metrics, incorrect_questions_summary, diagnostic_report, chat_history, user_query):
+    """Sends the diagnostic report and user study query to Gemini to act as a study coach."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    # Compile subject metrics string
+    metrics_str = ""
+    if subject_metrics:
+        for subject, stats in subject_metrics.items():
+            metrics_str += f"- {subject}: {stats['correct']}/{stats['attempted']} ({stats['accuracy']:.1f}% accuracy)\n"
+            
+    # Compile chat history format
+    history_str = ""
+    for msg in chat_history:
+        role = "Student" if msg["role"] == "user" else "Advisor"
+        history_str += f"{role}: {msg['content']}\n"
+        
+    prompt = (
+        f"You are an elite CFA Level II study advisor and executive coach.\n"
+        f"You are helping a student review their performance diagnostic and draft a strategy to pass the exam.\n\n"
+        f"--- STUDENT PERFORMANCE METRICS ---\n"
+        f"{metrics_str}\n\n"
+        f"--- GENERATED DIAGNOSTIC REPORT ---\n"
+        f"{diagnostic_report}\n\n"
+        f"--- CONVERSATION HISTORY ---\n"
+        f"{history_str}\n"
+        f"Student: {user_query}\n\n"
+        f"Provide an encouraging, direct, and actionable answer to the student's question. Offer concrete recommendations, study advice, "
+        f"or explain specific concepts if asked. Maintain LaTeX formatting ($ ... $ for inline variables, $$ ... $$ for block formulas) if citing mathematical equations."
+    )
+    
+    request_data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    req_body = json.dumps(request_data).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            res_data = response.read().decode("utf-8")
+            res_json = json.loads(res_data)
+            
+            candidates = res_json.get("candidates", [])
+            if not candidates:
+                return "Gemini returned no candidates in response."
+                
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                return "Gemini returned empty content parts."
+                
+            return parts[0].get("text", "")
+            
+    except urllib.error.HTTPError as e:
+        try:
+            error_msg = e.read().decode("utf-8")
+        except:
+            error_msg = ""
+        return f"HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}"
+    except Exception as e:
+        return f"Error: {e}"
+

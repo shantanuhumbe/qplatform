@@ -732,8 +732,18 @@ def render_diagnostic_page(progress, vignettes):
     with col_rank:
         st.markdown("#### 🎯 Priority Ranking (Weakest Subjects first)")
         if subject_stats:
-            # Sort subjects descending by incorrect count (errors)
-            sorted_subjects = sorted(subject_stats.items(), key=lambda x: x[1]["incorrect"], reverse=True)
+            # Sort by:
+            # 1. Has errors (incorrect > 0) comes first.
+            # 2. Accuracy rate ascending (lower accuracy is weaker).
+            # 3. Incorrect count descending (more errors is weaker).
+            sorted_subjects = sorted(
+                subject_stats.items(),
+                key=lambda x: (
+                    x[1]["incorrect"] == 0,
+                    x[1]["accuracy"],
+                    -x[1]["incorrect"]
+                )
+            )
             # Filter to only subjects with attempted questions
             sorted_subjects = [s for s in sorted_subjects if s[1]["attempted"] > 0]
             
@@ -742,14 +752,14 @@ def render_diagnostic_page(progress, vignettes):
                 accuracy = stats["accuracy"]
                 attempted = stats["attempted"]
                 
-                # Determine tag styling and text
+                # Determine tag styling and text based on accuracy and attempt volume
                 if errors > 0:
-                    if rank_idx == 0:
+                    if accuracy < 50.0:
                         tag_color = "#EF4444" # Red
                         tag_bg = "rgba(239, 68, 68, 0.15)"
                         tag_border = "1px solid #EF4444"
                         priority_tag = "🔴 CRITICAL FOCUS"
-                    elif rank_idx == 1:
+                    elif accuracy < 75.0:
                         tag_color = "#F59E0B" # Amber
                         tag_bg = "rgba(245, 158, 11, 0.15)"
                         tag_border = "1px solid #F59E0B"
@@ -760,10 +770,16 @@ def render_diagnostic_page(progress, vignettes):
                         tag_border = "1px solid #3B82F6"
                         priority_tag = "🔵 REVIEW FOCUS"
                 else:
-                    tag_color = "#10B981" # Green
-                    tag_bg = "rgba(16, 185, 129, 0.15)"
-                    tag_border = "1px solid #10B981"
-                    priority_tag = "🟢 MASTERY STABLE"
+                    if attempted >= 5:
+                        tag_color = "#10B981" # Green
+                        tag_bg = "rgba(16, 185, 129, 0.15)"
+                        tag_border = "1px solid #10B981"
+                        priority_tag = "🟢 MASTERY STABLE"
+                    else:
+                        tag_color = "#6EE7B7" # Light green
+                        tag_bg = "rgba(110, 231, 183, 0.1)"
+                        tag_border = "1px solid rgba(110, 231, 183, 0.3)"
+                        priority_tag = "🟢 PASSING (Low Data)"
                     
                 st.markdown(
                     f'<div style="background-color: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); '
@@ -857,6 +873,82 @@ def render_diagnostic_page(progress, vignettes):
             mime="text/markdown",
             use_container_width=True
         )
+        
+        st.markdown("---")
+        
+        # Initialize chat history for diagnostic advisor
+        if "diagnostic_chats" not in st.session_state:
+            st.session_state.diagnostic_chats = []
+            
+        chat_header_col1, chat_header_col2 = st.columns([6, 1])
+        with chat_header_col1:
+            st.markdown("<h4 style='font-family: \"Outfit\", sans-serif; margin: 0;'>💬 Discuss Coach Diagnostic & Strategy</h4>", unsafe_allow_html=True)
+        with chat_header_col2:
+            if st.session_state.diagnostic_chats:
+                st.markdown('<div class="clear-chat-container">', unsafe_allow_html=True)
+                if st.button("🗑️ Clear", key="clear_diagnostic_chat", use_container_width=True):
+                    st.session_state.diagnostic_chats = []
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+        # Render advisor messages
+        if st.session_state.diagnostic_chats:
+            for msg in st.session_state.diagnostic_chats:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+        else:
+            st.markdown(
+                '<div class="feedback-box" style="border-left: 4px solid #8B5CF6; background-color: rgba(139, 92, 246, 0.03); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 15px;">'
+                '<h5 style="margin-top: 0; color: #A78BFA; font-family: \'Outfit\', sans-serif;">💡 Discuss Study Strategy with the AI Coach</h5>'
+                '<p style="font-size: 0.88em; opacity: 0.85; margin-bottom: 10px;">Ask for clarification on next steps, ask how to improve on specific subjects, or discuss readiness. Try asking:</p>'
+                '<ul style="font-size: 0.85em; opacity: 0.8; margin-left: 20px; line-height: 1.5; padding-left: 0;">'
+                '<li><em>"What are the top three actions I should focus on this week?"</em></li>'
+                '<li><em>"How can I resolve my weakness in Using Multifactor Models?"</em></li>'
+                '<li><em>"What concrete steps can I take to move from BORDERLINE to READY?"</em></li>'
+                '</ul>'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            
+        # Form for coach chat input
+        with st.form(key="diagnostic_chat_form", clear_on_submit=True):
+            input_col, btn_col = st.columns([10, 1])
+            with input_col:
+                coach_query = st.text_input(
+                    label="Ask the Coach:",
+                    label_visibility="collapsed",
+                    placeholder="Discuss study plans, mock targets, or specific weaknesses...",
+                    key="diagnostic_coach_query"
+                )
+            with btn_col:
+                st.markdown('<div class="chat-send-container">', unsafe_allow_html=True)
+                submit_coach = st.form_submit_button(label="🚀 Send")
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+        if submit_coach and coach_query.strip():
+            if not st.session_state.get("api_key"):
+                st.warning("⚠️ API key required for AI Study Coach.")
+            else:
+                st.session_state.diagnostic_chats.append({"role": "user", "content": coach_query.strip()})
+                
+                from quizapp.grader import discuss_diagnostic_llm
+                from quizapp.utils.diagnostic import prepare_incorrect_questions_summary
+                
+                # Fetch incorrect summary
+                incorrect_summary = prepare_incorrect_questions_summary(selected_progress, vignettes)
+                
+                with st.spinner("AI Study Coach is formulating a strategy..."):
+                    coach_response = discuss_diagnostic_llm(
+                        api_key=st.session_state.api_key,
+                        model=st.session_state.get("grade_model", DEFAULT_GRADE_MODEL),
+                        subject_metrics=subject_stats,
+                        incorrect_questions_summary=incorrect_summary,
+                        diagnostic_report=st.session_state.diagnostic_report,
+                        chat_history=st.session_state.diagnostic_chats[:-1],
+                        user_query=coach_query.strip()
+                    )
+                st.session_state.diagnostic_chats.append({"role": "assistant", "content": coach_response})
+                st.rerun()
 
 if __name__ == "__main__":
     main()
