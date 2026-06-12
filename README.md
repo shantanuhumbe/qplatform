@@ -21,6 +21,9 @@ This repository features two pre-extracted quiz bank options parsed with absolut
 
 ## 🚀 Key Features
 
+*   **AI Performance Diagnostic & Score Simulator**: Dedicated study dashboard that analyzes practice history, groups performance by CFA modules, ranks weaknesses (prioritizing lowest accuracy), and simulates mock exam equivalent scores on a premium Plotly gauge indicator compared to the 65% Minimum Passing Score (MPS).
+*   **CFA Exam Readiness Verdict & Study Advisor**: Generates a detailed AI report containing an executive summary, ranked study focus topics, and a concrete readiness verdict (`READY`, `BORDERLINE`, or `NOT READY YET`) with specific target benchmarks.
+*   **Interactive AI Study Coach**: A point-in-time chat workspace at the bottom of the diagnostic report allowing you to discuss next steps, next week's goals, or specific syllabus concepts with the AI Coach.
 *   **TI BA II Plus Financial Calculator Replica**: Collapsible, fully-functional calculator drawer rendered directly above the practice interface. Replicates the exact button layout, LCD display indicators, 2nd-key options, and advanced worksheets (TVM, Cash Flows, Amortization, Bond, and Depreciation) of the physical TI BA II Plus.
 *   **100% Wording Fidelity**: The study text, question prompts, and choices are exact word-for-word extracts from the PDF (no sentence splitting, re-phrasing, or scrambled text).
 *   **PDF Extraction & Layout Correction**:
@@ -69,6 +72,7 @@ qplatform/
     │   └── styles.py       # Custom premium dark mode CSS injection
     └── utils/
         ├── data_manager.py # IO helpers reading JSON databases
+        ├── diagnostic.py   # Correlates incorrect attempts and compiles subject metrics
         └── table_renderer.py # High-fidelity tables parsing and rendering engine
 ```
 
