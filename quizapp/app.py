@@ -92,6 +92,10 @@ def main():
     if st.session_state.get("active_page", "Practice Quiz") == "AI Performance Diagnostic":
         render_diagnostic_page(progress, vignettes)
         return
+        
+    if st.session_state.get("active_page", "Practice Quiz") == "Incorrect Questions Review":
+        render_incorrect_review_page(progress, vignettes)
+        return
     
     if not vignettes:
         st.title("🎯 CFA Case Study Quiz Platform")
@@ -1124,6 +1128,197 @@ def render_diagnostic_page(progress, vignettes):
                     )
                 st.session_state.diagnostic_chats.append({"role": "assistant", "content": coach_response})
                 st.rerun()
+
+def render_incorrect_review_page(progress, vignettes):
+    import re
+    from quizapp.utils.diagnostic import prepare_incorrect_questions_summary
+    
+    st.title("📋 Incorrect Questions Review Locker")
+    st.write("Review all questions you answered incorrectly in this practice session, inspect your logic against official curriculum answers, and study diagnostic feedback.")
+    
+    st.markdown("---")
+    
+    # 1. Fetch incorrect questions
+    incorrect_summary = prepare_incorrect_questions_summary(progress, vignettes)
+    
+    if not incorrect_summary:
+        st.success("🎉 Outstanding! You have zero incorrect questions in this session.")
+        st.info("💡 Keep practicing vignettes and mock exams to maintain this momentum!")
+        return
+        
+    # Group vignettes by topic for context retrieval
+    vignettes_by_topic = {v["topic"]: v for v in vignettes}
+    
+    # Calculate some helper counts for metrics
+    total_incorrect = len(incorrect_summary)
+    
+    # Get error category counts
+    error_counts = {}
+    for item in incorrect_summary:
+        cat = item.get("grader_error_category", "Unclassified")
+        error_counts[cat] = error_counts.get(cat, 0) + 1
+        
+    dominant_error = "None"
+    if error_counts:
+        dominant_error = max(error_counts.items(), key=lambda x: x[1])[0]
+        
+    # Get modules with errors
+    module_counts = {}
+    for item in incorrect_summary:
+        mod = item.get("module", "Other")
+        module_counts[mod] = module_counts.get(mod, 0) + 1
+        
+    worst_module = "None"
+    if module_counts:
+        worst_module = max(module_counts.items(), key=lambda x: x[1])[0]
+        
+    # Render premium diagnostic metrics
+    st.markdown("### 📊 Error Diagnostics")
+    m_col1, m_col2, m_col3 = st.columns(3)
+    with m_col1:
+        st.metric("Total Incorrect Questions", total_incorrect)
+    with m_col2:
+        st.metric("Dominant Error Type", dominant_error)
+    with m_col3:
+        st.metric("Weakest Subject Area", worst_module)
+        
+    st.markdown("---")
+    
+    # 2. Filters Row
+    st.markdown("### 🔍 Search & Filters")
+    f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 2])
+    
+    # Extract unique modules and categories in correct summary for filter dropdowns
+    available_modules = ["All Subject Areas"] + sorted(list({item["module"] for item in incorrect_summary}))
+    available_categories = ["All Error Types"] + sorted(list({item["grader_error_category"] for item in incorrect_summary}))
+    
+    with f_col1:
+        selected_mod_filter = st.selectbox("Filter by Subject", options=available_modules, key="incorrect_review_mod_filter")
+    with f_col2:
+        selected_cat_filter = st.selectbox("Filter by Error Type", options=available_categories, key="incorrect_review_cat_filter")
+    with f_col3:
+        search_query = st.text_input("Search Questions / Explanations", placeholder="Search keywords...", key="incorrect_review_search")
+        
+    # Apply filtering
+    filtered_list = []
+    for item in incorrect_summary:
+        # Subject Filter
+        if selected_mod_filter != "All Subject Areas" and item["module"] != selected_mod_filter:
+            continue
+        # Category Filter
+        if selected_cat_filter != "All Error Types" and item["grader_error_category"] != selected_cat_filter:
+            continue
+        # Search keyword
+        if search_query:
+            query = search_query.lower()
+            text_match = (
+                query in item["question_text"].lower() or 
+                query in item["official_explanation"].lower() or
+                query in item["vignette_topic"].lower()
+            )
+            if not text_match:
+                continue
+        filtered_list.append(item)
+        
+    st.markdown(f"**Showing {len(filtered_list)} of {total_incorrect} incorrect attempts**")
+    
+    # 3. Export to Markdown option
+    if filtered_list:
+        # Build beautiful markdown review document
+        export_lines = [
+            f"# CFA Practice Review: Incorrect Questions Study Sheet",
+            f"Generated on {st.query_params.get('q_bank', 'default').title()} Question Bank database.",
+            f"Total Incorrect Questions in Review: {len(filtered_list)}\n",
+            "---"
+        ]
+        
+        for index, item in enumerate(filtered_list):
+            export_lines.extend([
+                f"## [{item['module']}] {item['vignette_topic']} - Question {index + 1}",
+                f"**Question:** {item['question_text']}",
+                f"**Your Answer:** Option {item['user_answer']}",
+                f"**Correct Answer:** Option {item['correct_answer']}\n",
+                f"**Error Category Diagnosis:** {item['grader_error_category']}",
+                f"**AI Tutor Feedback:** {item['grader_feedback']}\n",
+                f"**User original Reasoning:** *{item['user_explanation'] or 'No reasoning provided.'}*\n",
+                f"**Official Curriculum Explanation:** {item['official_explanation']}",
+                "\n---"
+            ])
+            
+        export_md = "\n".join(export_lines)
+        st.download_button(
+            label="📥 Export Filtered Incorrect Questions (.md)",
+            data=export_md,
+            file_name="cfa_incorrect_questions_study_sheet.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
+        
+    st.markdown("")
+    
+    # 4. Render Expandable Question List
+    for index, item in enumerate(filtered_list):
+        vig = vignettes_by_topic.get(item["vignette_topic"])
+        case_study_html = ""
+        if vig:
+            raw_case_text = vig.get("case_study_text", "")
+            case_study_html = render_case_study(raw_case_text)
+            
+        expander_title = f"[{item['module']}] {item['vignette_topic']} (Error: {item['grader_error_category']})"
+        
+        with st.expander(expander_title):
+            # Display collapsible Case Study context if available
+            if case_study_html:
+                with st.expander("📖 View Case Study Scenario / Exhibits"):
+                    st.markdown(
+                        f'<div class="left-panel glass-card" style="max-height: 50vh; overflow-y: auto; padding: 20px;">'
+                        f'{case_study_html}'
+                        f'</div>', 
+                        unsafe_allow_html=True
+                    )
+            
+            # Display Question text
+            st.markdown(
+                f'<div class="glass-card" style="padding: 15px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #3B82F6;">'
+                f'<strong>Question:</strong> {item["question_text"]}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+            # Display Options
+            st.markdown("#### 📋 Choices & Selections:")
+            for opt in item["options"]:
+                opt_letter = opt.strip()[0].upper() if (opt.strip() and opt.strip()[0].upper() in ['A', 'B', 'C']) else ""
+                is_correct = opt_letter == item["correct_answer"].upper()
+                is_user = opt_letter == item["user_answer"].upper()
+                
+                if is_correct and is_user:
+                    st.markdown(f"<div style='padding: 6px 12px; border-radius: 4px; background-color: rgba(16, 185, 129, 0.15); border-left: 4px solid #10B981; margin-bottom: 4px;'>🟢 <strong>{opt}</strong> <em>(Selected & Correct)</em></div>", unsafe_allow_html=True)
+                elif is_correct:
+                    st.markdown(f"<div style='padding: 6px 12px; border-radius: 4px; background-color: rgba(59, 130, 246, 0.15); border-left: 4px solid #3B82F6; margin-bottom: 4px;'>🔵 <strong>{opt}</strong> <em>(Correct Answer)</em></div>", unsafe_allow_html=True)
+                elif is_user:
+                    st.markdown(f"<div style='padding: 6px 12px; border-radius: 4px; background-color: rgba(239, 68, 68, 0.15); border-left: 4px solid #EF4444; margin-bottom: 4px;'>🔴 <del>{opt}</del> <em>(Your Selected Answer)</em></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='padding: 6px 12px; border-radius: 4px; background-color: rgba(255, 255, 255, 0.03); margin-bottom: 4px; opacity: 0.7;'>⚪ {opt}</div>", unsafe_allow_html=True)
+            
+            # User original reasoning
+            st.markdown("---")
+            user_reasoning_display = item["user_explanation"] if item["user_explanation"] else "*No reasoning was provided.*"
+            st.markdown(f"**Your original reasoning:**\n> *{user_reasoning_display}*")
+            
+            # AI Grader diagnostic feedback
+            feedback_class = "feedback-incorrect"
+            st.markdown(
+                f'<div class="feedback-box {feedback_class}" style="margin-top: 15px;">'
+                f'<h4>🔍 Grader Diagnostic Diagnosis: {item["grader_error_category"]}</h4>'
+                f'<p>{item["grader_feedback"]}</p>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+            # Official Explanation
+            with st.expander("📖 View Official Curriculum Explanation"):
+                st.markdown(item["official_explanation"])
 
 if __name__ == "__main__":
     main()

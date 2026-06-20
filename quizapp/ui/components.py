@@ -15,12 +15,16 @@ def render_sidebar(progress, vignettes):
         if "active_page" not in st.session_state:
             st.session_state.active_page = "Practice Quiz"
             
+        nav_options = ["Practice Quiz", "AI Performance Diagnostic", "Incorrect Questions Review"]
+        if st.session_state.active_page not in nav_options:
+            st.session_state.active_page = "Practice Quiz"
+            
         active_page = st.selectbox(
             "Select Page View",
-            options=["Practice Quiz", "AI Performance Diagnostic"],
-            index=0 if st.session_state.active_page == "Practice Quiz" else 1,
+            options=nav_options,
+            index=nav_options.index(st.session_state.active_page),
             key="page_navigation_selectbox",
-            help="Switch between the practice questions workspace and the AI performance analyzer."
+            help="Switch between practice quiz, study diagnostics, and wrong answers review locker."
         )
         if active_page != st.session_state.active_page:
             st.session_state.active_page = active_page
