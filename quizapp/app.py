@@ -38,10 +38,17 @@ def main():
         else:
             st.session_state.grade_model = "gemini-2.5-flash"
             
-    # Sync current values to URL parameters so they appear in browser URL
-    st.query_params["q_bank"] = st.session_state.active_db
-    st.query_params["model"] = st.session_state.grade_model
-    
+    if "active_vignette_topic" not in st.session_state:
+        url_topic = st.query_params.get("topic")
+        st.session_state.active_vignette_topic = url_topic if url_topic else ""
+        
+    if "question_index" not in st.session_state:
+        url_q_idx = st.query_params.get("q_idx")
+        try:
+            st.session_state.question_index = int(url_q_idx) if url_q_idx is not None else 0
+        except ValueError:
+            st.session_state.question_index = 0
+            
     # 1. Initialize API key and state variables
     if "api_key" not in st.session_state:
         env_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -51,13 +58,7 @@ def main():
             all(32 <= ord(c) <= 126 for c in env_key)
         )
         st.session_state.api_key = env_key if is_env_valid else ""
-        
-    if "active_vignette_topic" not in st.session_state:
-        st.session_state.active_vignette_topic = ""
-        
-    if "question_index" not in st.session_state:
-        st.session_state.question_index = 0
-        
+
     active_db = st.session_state.get("active_db", "default")
     if active_db == "merged":
         vignette_path = MERGED_OUTPUT_PATH
@@ -75,6 +76,8 @@ def main():
         if "active_vignette_topic" in st.session_state:
             del st.session_state.active_vignette_topic
         st.session_state.question_index = 0
+        st.query_params.pop("topic", None)
+        st.query_params.pop("q_idx", None)
         st.session_state.reset_progress = False
         st.success("Session progress reset successfully!")
         
@@ -139,7 +142,16 @@ def main():
         st.error("No vignettes available under the current learning module.")
         return
     questions = active_vignette.get("questions", [])
+    if len(questions) > 0:
+        if st.session_state.question_index < 0 or st.session_state.question_index >= len(questions):
+            st.session_state.question_index = 0
     active_q_idx = st.session_state.question_index
+    
+    # Sync current values to URL parameters so they appear in browser URL
+    st.query_params["q_bank"] = st.session_state.active_db
+    st.query_params["model"] = st.session_state.grade_model
+    st.query_params["topic"] = st.session_state.active_vignette_topic
+    st.query_params["q_idx"] = str(st.session_state.question_index)
     
     # Track completion status of questions in this active vignette
     attempted_status = {}
@@ -162,14 +174,44 @@ def main():
     
     # Left column: Fixed Scrollable Case Study Vignette
     with col1:
-        st.markdown(
-            f'<div class="badge badge-module">{active_vignette.get("module", "CFA Module")}</div>', 
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            f'<h2 style="margin-top: 0px; font-family: \'Outfit\', sans-serif;">{active_vignette.get("topic", "Topic")}</h2>', 
-            unsafe_allow_html=True
-        )
+        header_col1, header_col2 = st.columns([3, 1])
+        with header_col1:
+            st.markdown(
+                f'<div class="badge badge-module">{active_vignette.get("module", "CFA Module")}</div>', 
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f'<h2 style="margin-top: 0px; font-family: \'Outfit\', sans-serif; font-size: 1.6em; line-height: 1.2;">{active_vignette.get("topic", "Topic")}</h2>', 
+                unsafe_allow_html=True
+            )
+        with header_col2:
+            st.markdown('<div style="height: 18px;"></div>', unsafe_allow_html=True)
+            if st.button("🔄 Next Case", use_container_width=True, help="Load the next case study / vignette"):
+                if st.session_state.get("filtering_mode", "Random") == "Random":
+                    # Random: pick another random vignette from the active list that isn't the current one
+                    candidates = [v for v in active_list if v["topic"] != active_vignette["topic"]]
+                    if candidates:
+                        import random
+                        next_v = random.choice(candidates)
+                    else:
+                        next_v = active_vignette
+                else:
+                    # Topic: pick the next sequential vignette from the active list
+                    current_idx = -1
+                    for idx, v in enumerate(active_list):
+                        if v["topic"] == active_vignette["topic"]:
+                            current_idx = idx
+                            break
+                    if current_idx != -1 and current_idx + 1 < len(active_list):
+                        next_v = active_list[current_idx + 1]
+                    else:
+                        next_v = active_list[0]
+                
+                st.session_state.active_vignette_topic = next_v["topic"]
+                st.session_state.question_index = 0
+                st.query_params["topic"] = next_v["topic"]
+                st.query_params["q_idx"] = "0"
+                st.rerun()
         
         # Convert case study text to HTML with smart table rendering
         raw_case_text = active_vignette.get("case_study_text", "")

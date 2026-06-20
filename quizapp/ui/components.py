@@ -46,6 +46,8 @@ def render_sidebar(progress, vignettes):
             st.session_state.active_db = selected_db
             st.session_state.active_vignette_topic = ""
             st.session_state.question_index = 0
+            st.query_params.pop("topic", None)
+            st.query_params.pop("q_idx", None)
             st.rerun()
             
         st.markdown("---")
