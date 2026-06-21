@@ -21,6 +21,9 @@ This repository features two pre-extracted quiz bank options parsed with absolut
 
 ## 🚀 Key Features
 
+*   **AI Spaced Repetition Flashcards & Active Recall Locker**: A dedicated Leitner-system spaced repetition study workspace. Flashcard decks are dynamically generated using the Gemini API, analyzing incorrect practice attempts to target and reinforce specific conceptual formulas or definition gaps. Cards can be flipped and graded across 4 study boxes (Hard, Medium, Easy, and Mastered).
+*   **Interactive Competency Radar Chart**: A polar radar chart rendered in the Diagnostic dashboard, mapping cumulative accuracy across all attempted CFA modules against the 65% Minimum Passing Score (MPS) and the 80% Mastery thresholds.
+*   **Global Top Header & Configurations Expander**: Modernized horizontal workspace layouts. Relocates active page routing buttons, question bank selection, study modes, and Gemini API validations from the sidebar to a horizontal top header bar and a collapsible config drawer. The sidebar remains clean and focused solely on metrics tracking and data backups.
 *   **AI Performance Diagnostic & Score Simulator**: Dedicated study dashboard that analyzes practice history, groups performance by CFA modules, ranks weaknesses (prioritizing lowest accuracy), and simulates mock exam equivalent scores on a premium Plotly gauge indicator compared to the 65% Minimum Passing Score (MPS).
 *   **CFA Exam Readiness Verdict & Study Advisor**: Generates a detailed AI report containing an executive summary, ranked study focus topics, and a concrete readiness verdict (`READY`, `BORDERLINE`, or `NOT READY YET`) with specific target benchmarks.
 *   **Interactive AI Study Coach**: A point-in-time chat workspace at the bottom of the diagnostic report allowing you to discuss next steps, next week's goals, or specific syllabus concepts with the AI Coach.
