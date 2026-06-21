@@ -4,167 +4,196 @@ import plotly.express as px
 import os
 import json
 
+def render_header(progress, vignettes):
+    """Renders a top horizontal header containing logo, horizontal tabs navigation,
+    and a collapsible study session/API configuration panel.
+    """
+    # 1. Header Layout with Logo & Navigation
+    h_col1, h_col2 = st.columns([1, 2])
+    with h_col1:
+        st.markdown(
+            "<h2 style='margin: 0; padding: 5px 0; color: #3B82F6; font-family: \"Outfit\", sans-serif; font-size: 1.8em;'>🎯 CFA Prep</h2>", 
+            unsafe_allow_html=True
+        )
+        
+    with h_col2:
+        if "active_page" not in st.session_state:
+            st.session_state.active_page = "Practice Quiz"
+            
+        nav_options = ["Practice Quiz", "AI Performance Diagnostic", "Incorrect Questions Review", "AI Flashcards & Active Recall"]
+        
+        # Safe checks
+        if st.session_state.active_page not in nav_options:
+            st.session_state.active_page = "Practice Quiz"
+            
+        # Draw horizontal columns for navigation buttons
+        nav_cols = st.columns(len(nav_options))
+        for i, option in enumerate(nav_options):
+            with nav_cols[i]:
+                is_active = st.session_state.active_page == option
+                btn_label = {
+                    "Practice Quiz": "📝 Practice",
+                    "AI Performance Diagnostic": "📊 Diagnostic",
+                    "Incorrect Questions Review": "📋 Review Locker",
+                    "AI Flashcards & Active Recall": "🎴 Flashcards"
+                }[option]
+                
+                # Active button gets a primary type, inactive gets secondary
+                if st.button(
+                    btn_label, 
+                    key=f"header_nav_{option.replace(' ', '_')}", 
+                    type="primary" if is_active else "secondary",
+                    use_container_width=True
+                ):
+                    st.session_state.active_page = option
+                    st.rerun()
+
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    
+    # 2. Collapsible Settings Panel
+    with st.expander("⚙️ Study Configurations & API Settings", expanded=False):
+        c_col1, c_col2, c_col3 = st.columns(3)
+        
+        with c_col1:
+            st.markdown("##### 📚 Question Bank")
+            active_db = st.session_state.get("active_db", "default")
+            db_options = {
+                "default": "CFA Combined QB (Default)",
+                "merged": "Merged Q-Bank (qbank_merged)"
+            }
+            selected_db = st.selectbox(
+                "Select Bank",
+                options=["default", "merged"],
+                format_func=lambda x: db_options[x],
+                index=0 if active_db == "default" else 1,
+                key="header_q_bank_selectbox",
+                help="Select which question bank database to load questions from."
+            )
+            if selected_db != active_db:
+                st.session_state.active_db = selected_db
+                st.session_state.active_vignette_topic = ""
+                st.session_state.question_index = 0
+                st.query_params.pop("topic", None)
+                st.query_params.pop("q_idx", None)
+                st.rerun()
+                
+        with c_col2:
+            st.markdown("##### 📚 Study Mode")
+            mode = st.radio(
+                "Selection Mode", 
+                ["Random Vignettes", "Topic-Based"],
+                index=0 if st.session_state.get("filtering_mode", "Random") == "Random" else 1,
+                key="header_filtering_mode_radio"
+            )
+            st.session_state.filtering_mode = "Random" if mode == "Random Vignettes" else "Topic"
+            
+            if st.session_state.filtering_mode == "Topic":
+                topics = sorted(list({v["module"] for v in vignettes})) if vignettes else []
+                if topics:
+                    selected_topic = st.selectbox(
+                        "Learning Module", 
+                        topics,
+                        index=topics.index(st.session_state.get("selected_topic")) if st.session_state.get("selected_topic") in topics else 0,
+                        key="header_selected_topic_selectbox"
+                    )
+                    st.session_state.selected_topic = selected_topic
+                else:
+                    st.warning("No modules found in question bank.")
+                    
+        with c_col3:
+            st.markdown("##### 🔑 API Configuration")
+            env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+            is_env_valid = (
+                len(env_key) >= 10 and 
+                not any(c.isspace() for c in env_key) and
+                all(32 <= ord(c) <= 126 for c in env_key)
+            )
+            
+            if "api_key" not in st.session_state:
+                st.session_state.api_key = env_key if is_env_valid else ""
+                
+            if "api_key_validation" not in st.session_state:
+                st.session_state.api_key_validation = None
+                
+            curr_key = st.session_state.api_key
+            
+            with st.form("api_key_form_header", clear_on_submit=False):
+                api_key_input = st.text_input(
+                    "Gemini API Key", 
+                    type="password", 
+                    value=curr_key,
+                    help="Optional. Used for dynamic AI grading and tutor chat."
+                )
+                btn_clicked = st.form_submit_button("Apply & Verify Key", use_container_width=True)
+                
+            if btn_clicked:
+                api_key_clean = api_key_input.strip()
+                if not api_key_clean:
+                    st.session_state.api_key = ""
+                    st.session_state.api_key_validation = None
+                    st.rerun()
+                else:
+                    is_input_valid = (
+                        len(api_key_clean) >= 10 and 
+                        not any(c.isspace() for c in api_key_clean) and
+                        all(32 <= ord(c) <= 126 for c in api_key_clean)
+                    )
+                    if is_input_valid:
+                        from quizapp.grader import validate_api_key
+                        model = st.session_state.get("grade_model", "gemini-2.5-flash")
+                        with st.spinner("Validating API Key..."):
+                            is_valid, msg = validate_api_key(api_key_clean, model)
+                            if is_valid:
+                                st.session_state.api_key = api_key_clean
+                                st.session_state.api_key_validation = ("success", "✅ API Key validated successfully!")
+                            else:
+                                st.session_state.api_key_validation = ("error", f"❌ Validation failed: {msg}")
+                        st.rerun()
+                    else:
+                        st.session_state.api_key_validation = ("error", "❌ Invalid key format.")
+                        st.rerun()
+                        
+            if st.session_state.api_key_validation:
+                status, msg = st.session_state.api_key_validation
+                if status == "success":
+                    st.success(msg)
+                else:
+                    st.error(msg)
+            elif not st.session_state.api_key:
+                if is_env_valid:
+                    st.info("Using Gemini API Key from environment.")
+                else:
+                    st.info("Set API Key for AI grading.")
+                    
+            model_options = {
+                "gemini-2.5-flash": "Gemini 2.5 Flash (Default)",
+                "gemini-2.5-flash-lite": "Gemini 2.5 Flash-Lite",
+                "gemini-2.0-flash": "Gemini 2.0 Flash",
+                "gemini-2.5-pro": "Gemini 2.5 Pro"
+            }
+            
+            curr_model = st.session_state.get("grade_model", "gemini-2.5-flash")
+            if curr_model not in model_options:
+                curr_model = "gemini-2.5-flash"
+                
+            selected_model_key = st.selectbox(
+                "AI Grading Model",
+                options=list(model_options.keys()),
+                format_func=lambda x: model_options[x],
+                index=list(model_options.keys()).index(curr_model),
+                key="header_model_selectbox",
+                help="Select the Gemini model for evaluation."
+            )
+            st.session_state.grade_model = selected_model_key
+    st.markdown("---")
+
 def render_sidebar(progress, vignettes):
-    """Renders the quiz study dashboard sidebar, statistics, and configuration inputs."""
+    """Renders the quiz study dashboard sidebar containing stats, error categories, and backup controls."""
     with st.sidebar:
         st.markdown("<h2 style='text-align: center; color: #3B82F6;'>🎯 Study Dashboard</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Page Navigation
-        st.subheader("📂 Navigation")
-        if "active_page" not in st.session_state:
-            st.session_state.active_page = "Practice Quiz"
-            
-        nav_options = ["Practice Quiz", "AI Performance Diagnostic", "Incorrect Questions Review"]
-        if st.session_state.active_page not in nav_options:
-            st.session_state.active_page = "Practice Quiz"
-            
-        active_page = st.selectbox(
-            "Select Page View",
-            options=nav_options,
-            index=nav_options.index(st.session_state.active_page),
-            key="page_navigation_selectbox",
-            help="Switch between practice quiz, study diagnostics, and wrong answers review locker."
-        )
-        if active_page != st.session_state.active_page:
-            st.session_state.active_page = active_page
-            st.rerun()
-            
-        st.markdown("---")
-        
-        # 0. Question Bank Selector
-        st.subheader("📚 Question Bank")
-        active_db = st.session_state.get("active_db", "default")
-        db_options = {
-            "default": "CFA Combined QB (Default)",
-            "merged": "Merged Q-Bank (qbank_merged)"
-        }
-        selected_db = st.selectbox(
-            "Select Question Bank",
-            options=["default", "merged"],
-            format_func=lambda x: db_options[x],
-            index=0 if active_db == "default" else 1,
-            help="Select which question bank database to load questions from."
-        )
-        if selected_db != active_db:
-            st.session_state.active_db = selected_db
-            st.session_state.active_vignette_topic = ""
-            st.session_state.question_index = 0
-            st.query_params.pop("topic", None)
-            st.query_params.pop("q_idx", None)
-            st.rerun()
-            
-        st.markdown("---")
-        
-        # 1. API Configuration
-        st.subheader("🔑 API Settings")
-        
-        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        is_env_valid = (
-            len(env_key) >= 10 and 
-            not any(c.isspace() for c in env_key) and
-            all(32 <= ord(c) <= 126 for c in env_key)
-        )
-        
-        if "api_key" not in st.session_state:
-            st.session_state.api_key = env_key if is_env_valid else ""
-            
-        if "api_key_validation" not in st.session_state:
-            st.session_state.api_key_validation = None
-            
-        curr_key = st.session_state.api_key
-        
-        with st.form("api_key_form", clear_on_submit=False):
-            api_key_input = st.text_input(
-                "Gemini API Key", 
-                type="password", 
-                value=curr_key,
-                help="Optional. Used for dynamic AI grading and parsing new PDFs. Offline fallback grading is used if not provided."
-            )
-            btn_clicked = st.form_submit_button("Apply & Verify Key", use_container_width=True)
-            
-        if btn_clicked:
-            api_key_clean = api_key_input.strip()
-            if not api_key_clean:
-                st.session_state.api_key = ""
-                st.session_state.api_key_validation = None
-                st.rerun()
-            else:
-                is_input_valid = (
-                    len(api_key_clean) >= 10 and 
-                    not any(c.isspace() for c in api_key_clean) and
-                    all(32 <= ord(c) <= 126 for c in api_key_clean)
-                )
-                if is_input_valid:
-                    from quizapp.grader import validate_api_key
-                    model = st.session_state.get("grade_model", "gemini-2.5-flash")
-                    with st.spinner("Validating API Key with a sample request..."):
-                        is_valid, msg = validate_api_key(api_key_clean, model)
-                        if is_valid:
-                            st.session_state.api_key = api_key_clean
-                            st.session_state.api_key_validation = ("success", "✅ API Key validated successfully! (Connection active)")
-                        else:
-                            st.session_state.api_key_validation = ("error", f"❌ Validation failed: {msg}")
-                    st.rerun()
-                else:
-                    st.session_state.api_key_validation = ("error", "❌ Invalid key format (must be at least 10 chars, no spaces).")
-                    st.rerun()
-                    
-        # Display validation feedback
-        if st.session_state.api_key_validation:
-            status, msg = st.session_state.api_key_validation
-            if status == "success":
-                st.success(msg)
-            else:
-                st.error(msg)
-        elif not st.session_state.api_key:
-            if is_env_valid:
-                st.info("Using Gemini API Key from environment.")
-            else:
-                st.info("Optional: Set API Key for AI grading. Otherwise, offline fallback will be used.")
-            
-        # Model Selection
-        model_options = {
-            "gemini-2.5-flash": "Gemini 2.5 Flash (Default - Fast & Smart)",
-            "gemini-2.5-flash-lite": "Gemini 2.5 Flash-Lite (Rate-Limit Friendly)",
-            "gemini-2.0-flash": "Gemini 2.0 Flash (Fast & Balanced)",
-            "gemini-2.5-pro": "Gemini 2.5 Pro (Detailed - Slow)"
-        }
-        
-        curr_model = st.session_state.get("grade_model", "gemini-2.5-flash")
-        if curr_model not in model_options:
-            curr_model = "gemini-2.5-flash"
-            
-        selected_model_key = st.selectbox(
-            "AI Grading Model",
-            options=list(model_options.keys()),
-            format_func=lambda x: model_options[x],
-            index=list(model_options.keys()).index(curr_model),
-            help="Select the Gemini model for evaluation. If you hit 'Too Many Requests (429)' errors, try switching to Gemini 1.5 Flash."
-        )
-        st.session_state.grade_model = selected_model_key
-        
-        st.markdown("---")
-        
-        # 2. Filtering Options
-        st.subheader("📚 Study Mode")
-        mode = st.radio("Selection Mode", ["Random Vignettes", "Topic-Based"],
-                        index=0 if st.session_state.get("filtering_mode", "Random") == "Random" else 1)
-        st.session_state.filtering_mode = "Random" if mode == "Random Vignettes" else "Topic"
-        
-        if st.session_state.filtering_mode == "Topic":
-            # Extract unique topics/modules from vignettes list
-            topics = sorted(list({v["module"] for v in vignettes})) if vignettes else []
-            if topics:
-                selected_topic = st.selectbox("Select Learning Module", topics,
-                                              index=topics.index(st.session_state.get("selected_topic")) if st.session_state.get("selected_topic") in topics else 0)
-                st.session_state.selected_topic = selected_topic
-            else:
-                st.warning("No modules found in question bank. Parse some pages first!")
-        
-        st.markdown("---")
-        
-        # 3. Session Statistics
+        # 1. Session Statistics
         st.subheader("📈 Performance Analysis")
         score = progress.get("score", 0)
         attempted = progress.get("total_attempted", 0)
@@ -176,7 +205,7 @@ def render_sidebar(progress, vignettes):
         with col2:
             st.metric("Accuracy", f"{pct:.1f}%")
             
-        # 4. Error Category Chart
+        # 2. Error Category Chart
         stats = progress.get("statistics", {})
         # Filter out 'None' for error categories
         error_stats = {k: v for k, v in stats.items() if k != "None" and v > 0}
@@ -199,7 +228,7 @@ def render_sidebar(progress, vignettes):
         else:
             st.info("No error categories tracked yet. Attempt questions to diagnose weak areas.")
             
-        # 5. Backup & Restore
+        # 3. Backup & Restore
         st.markdown("---")
         st.subheader("💾 Backup & Restore")
         
@@ -238,10 +267,10 @@ def render_sidebar(progress, vignettes):
                     st.error("❌ Invalid format: missing required progress keys.")
             except Exception as e:
                 st.error(f"❌ Error parsing progress file: {e}")
-
+ 
         st.markdown("---")
         
-        # 6. Reset progress button
+        # 4. Reset progress button
         if st.button("Reset Session Progress"):
             st.session_state.reset_progress = True
             st.rerun()

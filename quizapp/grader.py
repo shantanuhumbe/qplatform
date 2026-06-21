@@ -412,3 +412,108 @@ def discuss_diagnostic_llm(api_key, model, subject_metrics, incorrect_questions_
     except Exception as e:
         return f"Error: {e}"
 
+def generate_flashcards_llm(api_key, model, incorrect_questions_summary, fallback_vignettes=None, limit=8):
+    """
+    Calls the Gemini API to generate structured flashcards based on the student's
+    incorrect questions history or general vignettes.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    prompt = (
+        "You are an expert Chartered Financial Analyst (CFA) Level II and Level III tutor.\n"
+        "Your task is to generate highly effective active recall flashcards to help a student study.\n\n"
+    )
+    
+    if incorrect_questions_summary:
+        prompt += (
+            f"The student has recently missed several practice questions. Analyze these errors and generate "
+            f"exactly {limit} high-yield flashcards focusing on the conceptual gaps, formula applications, or "
+            f"calculator procedures related to these incorrect answers:\n\n"
+        )
+        for idx, item in enumerate(incorrect_questions_summary[:15]): # Limit context size
+            prompt += (
+                f"- Incorrect Q{idx+1} [Module: {item['module']}]: {item['question_text']}\n"
+                f"  Correct Answer: {item['correct_answer']}\n"
+                f"  Student Selected: {item['user_answer']}\n"
+                f"  Official explanation: {item['official_explanation']}\n"
+                f"  Grader error classification: {item['grader_error_category']}\n\n"
+            )
+    else:
+        prompt += (
+            f"The student does not have any incorrect attempts yet. Create {limit} high-yield, premium-quality "
+            f"foundation flashcards covering core CFA syllabus areas based on the following topics:\n\n"
+        )
+        if fallback_vignettes:
+            for idx, vig in enumerate(fallback_vignettes[:10]):
+                prompt += f"- Topic {idx+1} [Module: {vig.get('module')}]: {vig.get('topic')}\n"
+        else:
+            prompt += "- Equity Valuation, FSA, Fixed Income, Corporate Finance, Portfolio Management, Ethics\n"
+            
+    prompt += (
+        "\nFlashcard Design Rules:\n"
+        "1. **Front of the Card (`front`)**: Keep it concise. Focus on active recall questions (e.g., 'What is the formula for FCFE starting from Net Income?'), conceptual identification (e.g., 'Explain the relationship between spot rates and forward rates in an arbitrage-free framework'), or BA II Plus sequence request (e.g., 'How do you configure payment frequency for amortization on the TI BA II Plus?').\n"
+        "2. **Back of the Card (`back`)**: Provide a detailed, step-by-step answer or explanation. Use LaTeX equations for math calculations (e.g., $$ ... $$ for blocks, $ ... $ for inline math). Ensure all math variables are clearly defined and formatting includes spaces around operators (e.g., + , - , * , =). Highlight common pitfalls or calculator tips if applicable.\n"
+        "3. **Subject (`subject`)**: Categorize the card into the appropriate CFA module/subject (e.g. 'Fixed Income' or 'Free Cash Flow Valuation').\n\n"
+        "Format your final response as a JSON object matching the requested schema."
+    )
+    
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "flashcards": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "subject": {"type": "STRING"},
+                        "front": {"type": "STRING"},
+                        "back": {"type": "STRING"}
+                    },
+                    "required": ["subject", "front", "back"]
+                }
+            }
+        },
+        "required": ["flashcards"]
+    }
+    
+    request_data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": schema
+        }
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    req_body = json.dumps(request_data).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            res_data = response.read().decode("utf-8")
+            res_json = json.loads(res_data)
+            
+            candidates = res_json.get("candidates", [])
+            if not candidates:
+                raise ValueError("No candidates returned from Gemini Flashcards API.")
+                
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                raise ValueError("No content parts returned from Gemini API.")
+                
+            raw_text = parts[0].get("text", "")
+            output_data = json.loads(raw_text)
+            return output_data.get("flashcards", [])
+            
+    except Exception as e:
+        print(f"Error generating flashcards: {e}")
+        return []
+

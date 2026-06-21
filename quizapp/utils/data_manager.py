@@ -52,7 +52,8 @@ def load_progress(path):
             "Conceptual Gap": 0,
             "Formula Misuse": 0,
             "Reading Misinterpretation": 0
-        }
+        },
+        "flashcards": []  # list of dicts: {"id", "subject", "front", "back", "box", "next_review"}
     }
     
     if not os.path.exists(path):

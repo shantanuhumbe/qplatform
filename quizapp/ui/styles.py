@@ -334,7 +334,137 @@ div.stFormSubmitButton > button:hover {
     background: transparent !important;
     padding: 0 !important;
 }
+
+/* Flashcards Custom Styles */
+.flashcard-outer {
+    background: rgba(30, 41, 59, 0.4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 20px;
+    padding: 35px 30px;
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+    margin: 20px 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.flashcard-outer:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 16px 48px 0 rgba(139, 92, 246, 0.15);
+    transform: translateY(-2px);
+}
+
+.flashcard-front {
+    color: #E2E8F0;
+    font-size: 1.35em;
+    font-weight: 500;
+    text-align: center;
+    font-family: 'Outfit', sans-serif;
+    line-height: 1.4;
+}
+
+.flashcard-back {
+    color: #CBD5E1;
+    font-size: 1.05em;
+    font-weight: 400;
+    text-align: left;
+    line-height: 1.5;
+    width: 100%;
+}
+
+.flashcard-back h4 {
+    color: #A78BFA;
+    margin-top: 0;
+    font-family: 'Outfit', sans-serif;
+}
+
+.flashcard-subject-badge {
+    position: absolute;
+    top: 15px;
+    left: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #C084FC;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.flashcard-status-badge {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    letter-spacing: 0.05em;
+}
+
+.flashcard-box-1 {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #FCA5A5;
+}
+
+.flashcard-box-2 {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #FDE047;
+}
+
+.flashcard-box-3 {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #93C5FD;
+}
+
+.flashcard-box-4 {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #86EFAC;
+}
+
+.spaced-rep-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 25px;
+}
+
+.spaced-rep-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+}
+
+.spaced-rep-item .count {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin-bottom: 2px;
+    font-family: 'Outfit', sans-serif;
+}
+
+.spaced-rep-item .label {
+    font-size: 0.75em;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
 </style>
+
 """
 
 def apply_custom_styles():

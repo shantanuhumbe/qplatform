@@ -12,7 +12,7 @@ import streamlit as st
 from quizapp.config import DEFAULT_OUTPUT_PATH, DEFAULT_PROGRESS_PATH, DEFAULT_GRADE_MODEL, MERGED_OUTPUT_PATH, MERGED_PROGRESS_PATH
 from quizapp.utils.data_manager import load_questions_bank, load_progress, save_progress
 from quizapp.ui.styles import apply_custom_styles
-from quizapp.ui.components import render_sidebar, render_navigation_dots
+from quizapp.ui.components import render_sidebar, render_navigation_dots, render_header
 from quizapp.grader import grade_user_answer
 from quizapp.calculator import render_calculator_drawer
 
@@ -85,6 +85,9 @@ def main():
     vignettes = load_questions_bank(vignette_path)
     progress = load_progress(progress_path)
     
+    # Header rendering
+    render_header(progress, vignettes)
+    
     # Sidebar rendering
     render_sidebar(progress, vignettes)
     
@@ -95,6 +98,10 @@ def main():
         
     if st.session_state.get("active_page", "Practice Quiz") == "Incorrect Questions Review":
         render_incorrect_review_page(progress, vignettes)
+        return
+
+    if st.session_state.get("active_page", "Practice Quiz") == "AI Flashcards & Active Recall":
+        render_flashcards_page(progress, vignettes, progress_path)
         return
     
     if not vignettes:
@@ -836,62 +843,125 @@ def render_diagnostic_page(progress, vignettes):
     col_chart, col_rank = st.columns([5, 4])
     
     with col_chart:
-        st.markdown("#### 📊 Subject Accuracy & Error Volume")
+        st.markdown("#### 📊 Competency Diagnostics")
         if subject_stats:
             import pandas as pd
             import plotly.express as px
+            import plotly.graph_objects as go
             
-            # Build data list
-            chart_data = []
-            for sub, stats in subject_stats.items():
-                chart_data.append({
-                    "Subject Area": sub,
-                    "Accuracy (%)": round(stats["accuracy"], 1),
-                    "Errors": stats["incorrect"],
-                    "Attempted": stats["attempted"]
-                })
+            tab_bar, tab_radar = st.tabs(["📊 Subject Error Volume", "🕸️ Competency Radar Profile"])
             
-            df_subject = pd.DataFrame(chart_data)
-            # Sort by Errors ascending so when plotted horizontally, largest errors is at the top
-            df_subject = df_subject.sort_values(by="Errors", ascending=True)
-            
-            fig = px.bar(
-                df_subject,
-                x="Errors",
-                y="Subject Area",
-                orientation='h',
-                text="Accuracy (%)",
-                color="Accuracy (%)",
-                color_continuous_scale="RdYlGn",
-                hover_data=["Attempted", "Errors"],
-                template="plotly_dark"
-            )
-            
-            num_items = len(chart_data)
-            chart_item_height = 50
-            chart_padding = 80
-            fig_height = max(180, chart_item_height * num_items + chart_padding)
-            
-            fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=fig_height,
-                xaxis_title="Number of Incorrect Attempts (Error Count)",
-                yaxis_title=None,
-                coloraxis_colorbar=dict(title="Accuracy %")
-            )
-            fig.update_traces(
-                texttemplate='%{text}% Acc',
-                textposition='inside',
-                insidetextanchor='end'
-            )
-            
-            # Keep 10 items visible, make remaining scrollable
-            if num_items > 10:
-                container_height = chart_item_height * 10 + chart_padding
-                with st.container(height=container_height, border=False):
+            with tab_bar:
+                # Build data list
+                chart_data = []
+                for sub, stats in subject_stats.items():
+                    chart_data.append({
+                        "Subject Area": sub,
+                        "Accuracy (%)": round(stats["accuracy"], 1),
+                        "Errors": stats["incorrect"],
+                        "Attempted": stats["attempted"]
+                    })
+                
+                df_subject = pd.DataFrame(chart_data)
+                # Sort by Errors ascending so when plotted horizontally, largest errors is at the top
+                df_subject = df_subject.sort_values(by="Errors", ascending=True)
+                
+                fig = px.bar(
+                    df_subject,
+                    x="Errors",
+                    y="Subject Area",
+                    orientation='h',
+                    text="Accuracy (%)",
+                    color="Accuracy (%)",
+                    color_continuous_scale="RdYlGn",
+                    hover_data=["Attempted", "Errors"],
+                    template="plotly_dark"
+                )
+                
+                num_items = len(chart_data)
+                chart_item_height = 50
+                chart_padding = 80
+                fig_height = max(180, chart_item_height * num_items + chart_padding)
+                
+                fig.update_layout(
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    height=fig_height,
+                    xaxis_title="Number of Incorrect Attempts (Error Count)",
+                    yaxis_title=None,
+                    coloraxis_colorbar=dict(title="Accuracy %")
+                )
+                fig.update_traces(
+                    texttemplate='%{text}% Acc',
+                    textposition='inside',
+                    insidetextanchor='end'
+                )
+                
+                # Keep 10 items visible, make remaining scrollable
+                if num_items > 10:
+                    container_height = chart_item_height * 10 + chart_padding
+                    with st.container(height=container_height, border=False):
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                else:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-            else:
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            
+            with tab_radar:
+                categories = list(subject_stats.keys())
+                if categories:
+                    # Close the path for radar chart
+                    categories_closed = categories + [categories[0]]
+                    accuracy_values = [round(subject_stats[cat]["accuracy"], 1) for cat in categories]
+                    accuracy_values_closed = accuracy_values + [accuracy_values[0]]
+                    
+                    mps_values = [65.0] * len(categories_closed)
+                    mastery_values = [80.0] * len(categories_closed)
+                    
+                    fig_radar = go.Figure()
+                    
+                    # Student path
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=accuracy_values_closed,
+                        theta=categories_closed,
+                        fill='toself',
+                        name='Your Accuracy',
+                        fillcolor='rgba(139, 92, 246, 0.15)',
+                        line=dict(color='#8B5CF6', width=2)
+                    ))
+                    
+                    # MPS boundary
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=mps_values,
+                        theta=categories_closed,
+                        name='65% Pass Mark (MPS)',
+                        line=dict(color='#F59E0B', width=1.5, dash='dash')
+                    ))
+                    
+                    # Mastery boundary
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=mastery_values,
+                        theta=categories_closed,
+                        name='80% Mastery Target',
+                        line=dict(color='#10B981', width=1.5, dash='dot')
+                    ))
+                    
+                    fig_radar.update_layout(
+                        polar=dict(
+                            radialaxis=dict(
+                                visible=True,
+                                range=[0, 100],
+                                color="#94A3B8"
+                            ),
+                            bgcolor='rgba(255, 255, 255, 0.01)'
+                        ),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color="#F1F5F9", family="Inter"),
+                        margin=dict(l=40, r=40, t=40, b=40),
+                        height=420,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_radar, use_container_width=True, config={'displayModeBar': False})
+                else:
+                    st.info("No categories to plot yet.")
         else:
             st.info("No subject metrics available. Please practice some questions first.")
             
@@ -1319,6 +1389,245 @@ def render_incorrect_review_page(progress, vignettes):
             # Official Explanation
             with st.expander("📖 View Official Curriculum Explanation"):
                 st.markdown(item["official_explanation"])
+
+def render_flashcards_page(progress, vignettes, progress_path):
+    import uuid
+    import hashlib
+    from quizapp.utils.diagnostic import prepare_incorrect_questions_summary
+    from quizapp.grader import generate_flashcards_llm
+    
+    st.title("🎴 AI Spaced Repetition Flashcards")
+    st.write("Retain formulas, calculator procedures, and core definitions using active recall and Leitner system spaced repetition.")
+    
+    st.markdown("---")
+    
+    flashcards = progress.get("flashcards", [])
+    
+    # Calculate stats for the spaced repetition grid
+    box_1_cnt = sum(1 for c in flashcards if c.get("box", 1) == 1)
+    box_2_cnt = sum(1 for c in flashcards if c.get("box", 1) == 2)
+    box_3_cnt = sum(1 for c in flashcards if c.get("box", 1) == 3)
+    box_4_cnt = sum(1 for c in flashcards if c.get("box", 1) == 4)
+    
+    st.markdown(
+        f"""
+        <div class="spaced-rep-grid">
+            <div class="spaced-rep-item" style="border-left: 4px solid #EF4444;">
+                <div class="count" style="color: #FCA5A5;">{box_1_cnt}</div>
+                <div class="label">Box 1: Hard</div>
+            </div>
+            <div class="spaced-rep-item" style="border-left: 4px solid #F59E0B;">
+                <div class="count" style="color: #FDE047;">{box_2_cnt}</div>
+                <div class="label">Box 2: Medium</div>
+            </div>
+            <div class="spaced-rep-item" style="border-left: 4px solid #3B82F6;">
+                <div class="count" style="color: #93C5FD;">{box_3_cnt}</div>
+                <div class="label">Box 3: Easy</div>
+            </div>
+            <div class="spaced-rep-item" style="border-left: 4px solid #10B981;">
+                <div class="count" style="color: #86EFAC;">{box_4_cnt}</div>
+                <div class="label">🏆 Mastered</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Check key and diagnostics
+    api_key_set = bool(st.session_state.get("api_key"))
+    incorrect_summary = prepare_incorrect_questions_summary(progress, vignettes)
+    
+    # Sidebar generator / controls block
+    with st.expander("🛠️ Card Generator & Management", expanded=not flashcards):
+        g_col1, g_col2 = st.columns([2, 1])
+        with g_col1:
+            st.markdown("#### ⚡ Generate AI Flashcards")
+            if incorrect_summary:
+                st.write(f"You currently have **{len(incorrect_summary)}** incorrect questions recorded. We can generate high-yield study cards mapping to these specific mistakes.")
+            else:
+                st.write("You don't have any incorrect attempts recorded yet. We will generate standard foundational study cards from the curriculum.")
+                
+            card_limit = st.slider("Number of cards to generate", min_value=3, max_value=15, value=8)
+            
+            if not api_key_set:
+                st.warning("⚠️ Enter and verify your Gemini API Key in the sidebar to generate flashcards.")
+                
+            btn_gen = st.button("Generate Cards", type="primary", disabled=not api_key_set, use_container_width=True)
+            if btn_gen:
+                with st.spinner("Gemini is analyzing curriculum concepts and generating flashcards..."):
+                    generated_cards = generate_flashcards_llm(
+                        api_key=st.session_state.api_key,
+                        model=st.session_state.get("grade_model", "gemini-2.5-flash"),
+                        incorrect_questions_summary=incorrect_summary,
+                        fallback_vignettes=vignettes,
+                        limit=card_limit
+                    )
+                    
+                    if not generated_cards:
+                        st.error("Failed to generate flashcards. Please check connection or API key.")
+                    else:
+                        import time
+                        added_count = 0
+                        # Prevent duplicate flashcards by checking fronts
+                        existing_fronts = {c["front"].strip().lower() for c in flashcards}
+                        
+                        for c in generated_cards:
+                            front_txt = c.get("front", "").strip()
+                            if front_txt and front_txt.lower() not in existing_fronts:
+                                # Create unique ID
+                                cid = hashlib.md5(f"{front_txt}_{time.time()}".encode("utf-8")).hexdigest()[:12]
+                                flashcards.append({
+                                    "id": cid,
+                                    "subject": c.get("subject", "General"),
+                                    "front": front_txt,
+                                    "back": c.get("back", "").strip(),
+                                    "box": 1,
+                                    "next_review": ""
+                                })
+                                existing_fronts.add(front_txt.lower())
+                                added_count += 1
+                                
+                        if added_count > 0:
+                            progress["flashcards"] = flashcards
+                            save_progress(progress_path, progress)
+                            st.success(f"Successfully generated and added {added_count} active study cards!")
+                            st.rerun()
+                        else:
+                            st.warning("All generated cards were duplicates of existing cards. Try resetting the deck first or practicing more questions.")
+                            
+        with g_col2:
+            st.markdown("#### 🗑️ Card Management")
+            st.write("Reset card positions to Box 1, or wipe the current deck to start clean.")
+            if st.button("Reset Cards to Box 1", use_container_width=True):
+                for c in flashcards:
+                    c["box"] = 1
+                progress["flashcards"] = flashcards
+                save_progress(progress_path, progress)
+                st.success("All cards reset to Box 1!")
+                st.rerun()
+                
+            if st.button("Clear Deck (Delete All)", use_container_width=True, type="secondary"):
+                progress["flashcards"] = []
+                save_progress(progress_path, progress)
+                st.success("Wiped card database!")
+                st.rerun()
+                
+    if not flashcards:
+        st.info("💡 Your card deck is empty. Open the management drawer above and click 'Generate Cards' to begin.")
+        return
+        
+    # Spaced repetition filter: review Box 1, Box 2, Box 3. Box 4 is mastered.
+    active_cards = [c for c in flashcards if c.get("box", 1) < 4]
+    
+    if not active_cards:
+        st.balloons()
+        st.markdown(
+            """
+            <div class="feedback-box feedback-correct" style="padding: 30px; text-align: center;">
+                <h3>🎉 Card Deck Mastered!</h3>
+                <p>Outstanding! You have successfully reviewed and categorized all flashcards into your Mastered Box.</p>
+                <p>Open the management drawer above to reset card positions and run another recall cycle.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        return
+        
+    # Navigation tracking for active cards
+    if "current_card_idx" not in st.session_state:
+        st.session_state.current_card_idx = 0
+        
+    if st.session_state.current_card_idx >= len(active_cards):
+        st.session_state.current_card_idx = max(0, len(active_cards) - 1)
+        
+    card_idx = st.session_state.current_card_idx
+    card = active_cards[card_idx]
+    
+    # Initialize card flip state
+    if "card_flipped" not in st.session_state:
+        st.session_state.card_flipped = False
+        
+    flipped = st.session_state.card_flipped
+    box_num = card.get("box", 1)
+    
+    box_labels = {
+        1: "Box 1: Hard",
+        2: "Box 2: Medium",
+        3: "Box 3: Easy",
+        4: "🏆 Mastered"
+    }
+    
+    # Outer Glass Card Layout
+    card_html = f"""
+    <div class="flashcard-outer">
+        <span class="flashcard-subject-badge">{card.get("subject", "General")}</span>
+        <span class="flashcard-status-badge flashcard-box-{box_num}">{box_labels[box_num]}</span>
+        <div style="height: 25px;"></div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+    
+    if not flipped:
+        st.markdown(f"<div class='flashcard-front'>{card.get('front')}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='flashcard-back'>", unsafe_allow_html=True)
+        st.markdown("#### Answer / Explanation:")
+        st.markdown(card.get("back"))
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Card controls (Flip / Review ratings)
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1, 2, 1])
+    with ctrl_col2:
+        if not flipped:
+            if st.button("🔄 Reveal Answer", type="primary", use_container_width=True):
+                st.session_state.card_flipped = True
+                st.rerun()
+        else:
+            # Leitner buttons
+            b_col1, b_col2, b_col3, b_col4 = st.columns(4)
+            with b_col1:
+                if st.button("🔴 Hard", help="Keep in Box 1", use_container_width=True):
+                    update_card_box(progress, card["id"], 1, progress_path)
+            with b_col2:
+                if st.button("🟡 Good", help="Move to Box 2", use_container_width=True):
+                    update_card_box(progress, card["id"], 2, progress_path)
+            with b_col3:
+                if st.button("🔵 Easy", help="Move to Box 3", use_container_width=True):
+                    update_card_box(progress, card["id"], 3, progress_path)
+            with b_col4:
+                if st.button("🏆 Master", help="Archive to Mastered", use_container_width=True):
+                    update_card_box(progress, card["id"], 4, progress_path)
+                    
+            if st.button("🔄 Show Question", use_container_width=True):
+                st.session_state.card_flipped = False
+                st.rerun()
+                
+    # Footer navigation controls
+    st.markdown("---")
+    nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
+    with nav_col1:
+        if st.button("⬅️ Previous Card", disabled=card_idx == 0, use_container_width=True):
+            st.session_state.current_card_idx -= 1
+            st.session_state.card_flipped = False
+            st.rerun()
+    with nav_col2:
+        st.markdown(f"<p style='text-align: center; font-size: 0.9em; margin-top: 8px;'>Card {card_idx + 1} of {len(active_cards)} active cards</p>", unsafe_allow_html=True)
+    with nav_col3:
+        if st.button("Next Card ➡️", disabled=card_idx == len(active_cards) - 1, use_container_width=True):
+            st.session_state.current_card_idx += 1
+            st.session_state.card_flipped = False
+            st.rerun()
+
+def update_card_box(progress, card_id, target_box, progress_path):
+    """Updates a card's box level in the progress file and resets states."""
+    for c in progress["flashcards"]:
+        if c["id"] == card_id:
+            c["box"] = target_box
+            break
+    save_progress(progress_path, progress)
+    st.session_state.card_flipped = False
+    st.rerun()
 
 if __name__ == "__main__":
     main()
