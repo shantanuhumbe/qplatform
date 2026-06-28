@@ -106,33 +106,46 @@ def call_gemini_parser_api(api_key, model, text_to_parse, module_name):
     req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
     
     ctx = ssl._create_unverified_context()
-    try:
-        with urllib.request.urlopen(req, context=ctx) as response:
-            res_data = response.read().decode("utf-8")
-            res_json = json.loads(res_data)
-            
-            candidates = res_json.get("candidates", [])
-            if not candidates:
-                raise ValueError("No candidates returned from Gemini API.")
+    import time
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, context=ctx) as response:
+                res_data = response.read().decode("utf-8")
+                res_json = json.loads(res_data)
                 
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                raise ValueError("No content parts returned from Gemini API.")
+                candidates = res_json.get("candidates", [])
+                if not candidates:
+                    raise ValueError("No candidates returned from Gemini API.")
+                    
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if not parts:
+                    raise ValueError("No content parts returned from Gemini API.")
+                    
+                raw_text = parts[0].get("text", "")
+                parsed_json = json.loads(raw_text)
                 
-            raw_text = parts[0].get("text", "")
-            parsed_json = json.loads(raw_text)
-            
-            # Basic validation
-            validated = VignetteList(**parsed_json)
-            return validated.model_dump().get("vignettes", [])
-            
-    except urllib.error.HTTPError as e:
-        error_msg = e.read().decode("utf-8")
-        print(f"API HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}")
-        raise e
-    except Exception as e:
-        print(f"API call failure: {e}")
-        raise e
+                # Basic validation
+                validated = VignetteList(**parsed_json)
+                return validated.model_dump().get("vignettes", [])
+                
+        except urllib.error.HTTPError as e:
+            if e.code in [429, 503, 504] and attempt < max_retries - 1:
+                print(f"  Received HTTP {e.code}. Retrying in {retry_delay}s (Attempt {attempt + 1}/{max_retries})...")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            try:
+                error_msg = e.read().decode("utf-8")
+            except:
+                error_msg = ""
+            print(f"API HTTP Error {e.code}: {e.reason}\nDetails: {error_msg}")
+            raise e
+        except Exception as e:
+            print(f"API call failure: {e}")
+            raise e
 
 def generate_page_chunks(start_page, end_page, chunk_size, overlap):
     """Generates overlapping page ranges from start_page to end_page."""
